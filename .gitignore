@@ -18,6 +18,10 @@ venv/
 .coverage
 htmlcov/
 
+# Bancos locais / temporários
+*.db
+*.sqlite3
+
 # IDE / Sistema operacional
 .vscode/
 .idea/

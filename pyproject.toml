@@ -41,6 +41,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "C4", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -52,6 +55,12 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 module = ["celery.*"]
 ignore_missing_imports = true
+
+# O decorator @celery_app.task não é tipado (Celery sem stubs); relaxa apenas isso
+# na camada de workers, mantendo o restante do projeto em modo estrito.
+[[tool.mypy.overrides]]
+module = ["app.workers.*"]
+disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

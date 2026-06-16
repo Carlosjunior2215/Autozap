@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from app.api.webhook import roteador as roteador_webhook
 from app.core.config import obter_configuracoes
 
 
@@ -20,6 +21,7 @@ def criar_app() -> FastAPI:
         """Verificação de saúde da aplicação."""
         return {"status": "ok"}
 
+    aplicacao.include_router(roteador_webhook)
     return aplicacao
 
 
