@@ -9,6 +9,7 @@ from app.models.base import Base
 from app.models.contato import Contato
 from app.models.conversa import Conversa
 from app.models.enums import (
+    CategoriaIntencao,
     EstadoConversa,
     OrigemMensagem,
     StatusAgendamento,
@@ -24,6 +25,7 @@ from app.models.template import Template
 __all__ = [
     "Agendamento",
     "Base",
+    "CategoriaIntencao",
     "Contato",
     "Conversa",
     "EstadoConversa",

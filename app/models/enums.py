@@ -51,3 +51,24 @@ class StatusAgendamento(enum.StrEnum):
     CONFIRMADO = "confirmado"
     CANCELADO = "cancelado"
     CONCLUIDO = "concluido"
+
+
+class CategoriaIntencao(enum.StrEnum):
+    """Categorias de intenção classificadas para uma mensagem."""
+
+    AGENDAMENTO = "agendamento"
+    SERVICOS = "servicos"
+    PROMOCOES = "promocoes"
+    AJUDA = "ajuda"
+    OUTROS = "outros"
+
+    @classmethod
+    def de_texto(cls, valor: str | None) -> "CategoriaIntencao":
+        """Converte uma string arbitrária (ex.: saída do LLM) em categoria válida."""
+        if valor is None:
+            return cls.OUTROS
+        normalizado = valor.strip().lower()
+        for membro in cls:
+            if membro.value == normalizado:
+                return membro
+        return cls.OUTROS

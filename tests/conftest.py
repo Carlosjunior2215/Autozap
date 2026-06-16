@@ -22,6 +22,10 @@ from app.core.config import Configuracoes, obter_configuracoes
 from app.core.db import obter_sessao
 from app.main import app
 from app.models import Base
+from app.services.processamento import Dependencias
+from tests.fakes.ia import FakeClassificadorIA, FakeGeradorRespostaIA
+from tests.fakes.rate_limit import FakeRateLimiter
+from tests.fakes.whatsapp import FakeWhatsAppClient
 
 APP_SECRET_TESTE = "segredo-de-teste"
 VERIFY_TOKEN_TESTE = "token-de-teste"
@@ -93,3 +97,47 @@ async def cliente(
         yield c
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def whatsapp_fake() -> FakeWhatsAppClient:
+    """Cliente WhatsApp falso (registra os envios)."""
+    return FakeWhatsAppClient()
+
+
+@pytest.fixture
+def classificador_fake() -> FakeClassificadorIA:
+    """Classificador de intenção falso."""
+    return FakeClassificadorIA()
+
+
+@pytest.fixture
+def gerador_fake() -> FakeGeradorRespostaIA:
+    """Gerador de resposta falso."""
+    return FakeGeradorRespostaIA()
+
+
+@pytest.fixture
+def rate_limiter_fake() -> FakeRateLimiter:
+    """Rate limiter falso (contagem em memória)."""
+    return FakeRateLimiter()
+
+
+@pytest.fixture
+def dependencias(
+    config_teste: Configuracoes,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    whatsapp_fake: FakeWhatsAppClient,
+    classificador_fake: FakeClassificadorIA,
+    gerador_fake: FakeGeradorRespostaIA,
+    rate_limiter_fake: FakeRateLimiter,
+) -> Dependencias:
+    """Monta as dependências de processamento com todos os dublês."""
+    return Dependencias(
+        sessionmaker=sessionmaker_teste,
+        whatsapp=whatsapp_fake,
+        classificador_ia=classificador_fake,
+        gerador_ia=gerador_fake,
+        rate_limiter=rate_limiter_fake,
+        config=config_teste,
+    )
