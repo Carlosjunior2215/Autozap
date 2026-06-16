@@ -63,10 +63,20 @@ pytest
 
 ## Status de implementação
 
-- **Fase 0 — Bootstrap**: estrutura, configuração, qualidade, containers. ✅
-- **Fase 1 — Webhook + persistência**: em breve.
-- **Fase 2 — Classificação + respostas**: em breve.
-- **Fase 3 — Agendamento + admin**: em breve.
+- **Fase 0 — Bootstrap** ✅ — estrutura, configuração, qualidade, containers.
+- **Fase 1 — Webhook + persistência** ✅ — `/webhook` (assinatura HMAC, dedup), modelos e migration Alembic.
+- **Fase 2 — Classificação + respostas** ✅ — classificador híbrido (regras + Haiku), regras de negócio (anti-loop, opt-out, rate limit, janela 24h, handoff), respostas via template/Sonnet/interativo.
+- **Fase 3 — Agendamento + admin** ✅ — FSM de agendamento (lista interativa) e endpoints admin protegidos por API key.
+
+**Qualidade:** `ruff` + `mypy` estrito sem erros; **59 testes** (pytest), sem chamadas de rede reais.
+
+### Endpoints administrativos (header `X-API-Key`)
+
+- `GET /admin/conversas` — lista conversas.
+- `POST /admin/conversas/{id}/liberar` — libera o handoff (reativa o bot).
+- `GET|POST /admin/templates`, `PATCH /admin/templates/{id}` — gerir templates.
+- `GET|POST /admin/promocoes`, `PATCH /admin/promocoes/{id}` — gerir promoções.
+- `DELETE /admin/contatos/{id}` — direito ao esquecimento (apaga o contato e seus dados).
 
 Veja [PLAN.md](PLAN.md) para o detalhamento das fases e decisões de design.
 Comandos para o assistente de IA em [CLAUDE.md](CLAUDE.md).

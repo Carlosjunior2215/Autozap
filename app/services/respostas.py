@@ -28,7 +28,17 @@ class RespostaBotoes:
     origem_conteudo: str = "fixo"
 
 
-RespostaPlanejada = RespostaTexto | RespostaBotoes
+@dataclass(frozen=True)
+class RespostaLista:
+    """Resposta interativa com lista de opções (seções/itens)."""
+
+    corpo: str
+    titulo_botao: str
+    opcoes: tuple[OpcaoInterativa, ...]
+    origem_conteudo: str = "fixo"
+
+
+RespostaPlanejada = RespostaTexto | RespostaBotoes | RespostaLista
 
 _BOTOES_AJUDA: tuple[OpcaoInterativa, ...] = (
     OpcaoInterativa(id="menu_agendamento", titulo="Agendar"),

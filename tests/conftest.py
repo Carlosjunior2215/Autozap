@@ -29,6 +29,7 @@ from tests.fakes.whatsapp import FakeWhatsAppClient
 
 APP_SECRET_TESTE = "segredo-de-teste"
 VERIFY_TOKEN_TESTE = "token-de-teste"
+ADMIN_API_KEY_TESTE = "chave-admin-teste"
 
 
 class EnfileiradorFake:
@@ -47,6 +48,7 @@ def config_teste() -> Configuracoes:
     return Configuracoes(
         whatsapp_app_secret=APP_SECRET_TESTE,
         whatsapp_verify_token=VERIFY_TOKEN_TESTE,
+        admin_api_key=ADMIN_API_KEY_TESTE,
     )
 
 

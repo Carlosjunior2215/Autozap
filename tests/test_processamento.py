@@ -176,8 +176,8 @@ async def test_fora_janela_usa_template_aprovado(
     async with sessionmaker_teste() as sessao:
         sessao.add(
             Template(
-                assunto="agendamento",
-                conteudo="Template aprovado de agendamento",
+                assunto="servicos",
+                conteudo="Tabela de serviços aprovada",
                 ativo=True,
                 aprovado_meta=True,
             )
@@ -186,12 +186,12 @@ async def test_fora_janela_usa_template_aprovado(
 
     antiga = agora_utc() - timedelta(hours=30)
     mensagem_id = await criar_mensagem_cliente(
-        sessionmaker_teste, texto="quero agendar", ultima_msg_cliente_em=antiga
+        sessionmaker_teste, texto="qual o preço?", ultima_msg_cliente_em=antiga
     )
     resultado = await processar(mensagem_id, dependencias)
 
     assert resultado.acao == "respondida"
-    assert whatsapp_fake.envios[0].conteudo == "Template aprovado de agendamento"
+    assert whatsapp_fake.envios[0].conteudo == "Tabela de serviços aprovada"
 
 
 async def test_fora_janela_sem_template_nao_responde(
@@ -201,7 +201,7 @@ async def test_fora_janela_sem_template_nao_responde(
 ) -> None:
     antiga = agora_utc() - timedelta(hours=30)
     mensagem_id = await criar_mensagem_cliente(
-        sessionmaker_teste, texto="quero agendar", ultima_msg_cliente_em=antiga
+        sessionmaker_teste, texto="qual o preço?", ultima_msg_cliente_em=antiga
     )
     resultado = await processar(mensagem_id, dependencias)
 

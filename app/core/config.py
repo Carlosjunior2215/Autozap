@@ -43,6 +43,15 @@ class Configuracoes(BaseSettings):
     limiar_confianca: float = 0.7
     max_respostas_por_hora: int = 10
 
+    # Agendamento (slots configuráveis)
+    servicos_oferecidos: str = "Corte de cabelo,Barba,Manicure"
+    agenda_hora_abertura: int = 9
+    agenda_hora_fechamento: int = 18
+    agenda_duracao_min: int = 60
+    agenda_dias_a_frente: int = 3
+    agenda_timezone: str = "America/Sao_Paulo"
+    max_slots_oferecidos: int = 9
+
     # Administração
     admin_api_key: str = "troque-esta-chave-admin"
 

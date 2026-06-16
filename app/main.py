@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from app.api.admin import roteador as roteador_admin
 from app.api.webhook import roteador as roteador_webhook
 from app.core.config import obter_configuracoes
 
@@ -22,6 +23,7 @@ def criar_app() -> FastAPI:
         return {"status": "ok"}
 
     aplicacao.include_router(roteador_webhook)
+    aplicacao.include_router(roteador_admin)
     return aplicacao
 
 

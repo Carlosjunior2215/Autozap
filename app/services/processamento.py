@@ -5,6 +5,7 @@ injetar dublês nos testes (sem rede, sem Redis, sem Celery).
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -12,13 +13,25 @@ from app.core.config import Configuracoes
 from app.integrations.ia import ClassificadorIA, GeradorRespostaIA
 from app.integrations.whatsapp import WhatsAppClient
 from app.models import Contato, Conversa, EventoMetrica, Intencao, Mensagem
-from app.models.enums import EstadoConversa, OrigemMensagem, StatusMensagem, TipoMensagem
+from app.models.enums import (
+    CategoriaIntencao,
+    EstadoConversa,
+    OrigemMensagem,
+    StatusMensagem,
+    TipoMensagem,
+)
+from app.services.agendamento import avancar_agendamento, iniciar_agendamento
 from app.services.classificador import classificar_intencao
 from app.services.deteccao import mensagem_nao_respondida
 from app.services.janela_24h import dentro_da_janela_24h
 from app.services.opt_out import eh_pedido_opt_out
 from app.services.rate_limit import RateLimiter
-from app.services.respostas import RespostaBotoes, montar_resposta
+from app.services.respostas import (
+    RespostaBotoes,
+    RespostaLista,
+    RespostaPlanejada,
+    montar_resposta,
+)
 from app.services.tempo import agora_utc
 
 
@@ -48,6 +61,45 @@ def _registrar_metrica(sessao: AsyncSession, tipo: str, conversa_id: int) -> Non
     sessao.add(EventoMetrica(tipo=tipo, conversa_id=conversa_id))
 
 
+async def _enviar_resposta(
+    sessao: AsyncSession,
+    conversa: Conversa,
+    contato: Contato,
+    mensagem: Mensagem,
+    resposta: RespostaPlanejada,
+    whatsapp: WhatsAppClient,
+    agora: datetime,
+) -> None:
+    """Envia a resposta planejada e registra a mensagem do bot na conversa."""
+    if isinstance(resposta, RespostaBotoes):
+        wa_id = await whatsapp.enviar_botoes(
+            contato.telefone, resposta.corpo, list(resposta.botoes)
+        )
+        texto_registrado, tipo = resposta.corpo, TipoMensagem.INTERATIVO
+    elif isinstance(resposta, RespostaLista):
+        wa_id = await whatsapp.enviar_lista(
+            contato.telefone, resposta.corpo, resposta.titulo_botao, list(resposta.opcoes)
+        )
+        texto_registrado, tipo = resposta.corpo, TipoMensagem.INTERATIVO
+    else:
+        wa_id = await whatsapp.enviar_texto(contato.telefone, resposta.conteudo)
+        texto_registrado, tipo = resposta.conteudo, TipoMensagem.TEXTO
+
+    sessao.add(
+        Mensagem(
+            conversa_id=conversa.id,
+            wa_message_id=wa_id or None,
+            origem=OrigemMensagem.BOT,
+            texto=texto_registrado,
+            tipo=tipo,
+            status=StatusMensagem.ENVIADA,
+        )
+    )
+    mensagem.respondida = True
+    conversa.ultima_msg_em = agora
+    conversa.ultima_msg_origem = OrigemMensagem.BOT
+
+
 async def processar(mensagem_id: int, deps: Dependencias) -> ResultadoProcessamento:
     """Processa uma mensagem recebida do cliente, aplicando todas as regras."""
     async with deps.sessionmaker() as sessao:
@@ -72,11 +124,9 @@ async def _processar(
     if contato is None:
         return ResultadoProcessamento(acao="ignorada", motivo="contato inexistente")
 
-    # Opt-out já registrado: nenhuma automação.
     if contato.opt_out:
         return ResultadoProcessamento(acao="ignorada", motivo="contato opt-out")
 
-    # Pedido de opt-out nesta mensagem.
     if eh_pedido_opt_out(mensagem.texto):
         contato.opt_out = True
         mensagem.respondida = True
@@ -87,6 +137,22 @@ async def _processar(
     agora = agora_utc()
     if not mensagem_nao_respondida(conversa, agora, deps.config.minutos_sem_resposta):
         return ResultadoProcessamento(acao="ignorada", motivo="nao elegivel")
+
+    # Fluxo de agendamento em andamento: continua sem reclassificar.
+    if conversa.estado == EstadoConversa.AGENDAMENTO and conversa.dados_fluxo:
+        if not await deps.rate_limiter.pode_responder(
+            contato.id, deps.config.max_respostas_por_hora
+        ):
+            _registrar_metrica(sessao, "rate_limit_excedido", conversa.id)
+            await sessao.commit()
+            return ResultadoProcessamento(acao="rate_limited", intencao="agendamento")
+        resposta = await avancar_agendamento(
+            sessao, conversa, contato, mensagem.payload_interativo, mensagem.texto, deps.config
+        )
+        await _enviar_resposta(sessao, conversa, contato, mensagem, resposta, deps.whatsapp, agora)
+        _registrar_metrica(sessao, "agendamento_passo", conversa.id)
+        await sessao.commit()
+        return ResultadoProcessamento(acao="respondida", intencao="agendamento")
 
     resultado = await classificar_intencao(
         mensagem.texto or "", deps.classificador_ia, deps.config.modelo_classificacao
@@ -119,39 +185,27 @@ async def _processar(
         await sessao.commit()
         return ResultadoProcessamento(acao="rate_limited", intencao=resultado.intencao.value)
 
+    # Intenção de agendamento: inicia o fluxo multi-turno.
+    if resultado.intencao == CategoriaIntencao.AGENDAMENTO:
+        inicio = iniciar_agendamento(conversa, deps.config)
+        await _enviar_resposta(sessao, conversa, contato, mensagem, inicio, deps.whatsapp, agora)
+        _registrar_metrica(sessao, "agendamento_iniciado", conversa.id)
+        await sessao.commit()
+        return ResultadoProcessamento(acao="respondida", intencao=resultado.intencao.value)
+
+    # Demais intenções: template, geração por IA ou botões (ajuda).
     dentro = dentro_da_janela_24h(conversa.ultima_msg_cliente_em, agora)
-    resposta = await montar_resposta(
+    resposta_normal = await montar_resposta(
         sessao, resultado.intencao, dentro, deps.gerador_ia, mensagem.texto or ""
     )
-    if resposta is None:
+    if resposta_normal is None:
         _registrar_metrica(sessao, "sem_resposta_fora_janela", conversa.id)
         await sessao.commit()
         return ResultadoProcessamento(acao="sem_resposta", intencao=resultado.intencao.value)
 
-    if isinstance(resposta, RespostaBotoes):
-        wa_id = await deps.whatsapp.enviar_botoes(
-            contato.telefone, resposta.corpo, list(resposta.botoes)
-        )
-        texto_registrado = resposta.corpo
-        tipo = TipoMensagem.INTERATIVO
-    else:
-        wa_id = await deps.whatsapp.enviar_texto(contato.telefone, resposta.conteudo)
-        texto_registrado = resposta.conteudo
-        tipo = TipoMensagem.TEXTO
-
-    sessao.add(
-        Mensagem(
-            conversa_id=conversa.id,
-            wa_message_id=wa_id or None,
-            origem=OrigemMensagem.BOT,
-            texto=texto_registrado,
-            tipo=tipo,
-            status=StatusMensagem.ENVIADA,
-        )
+    await _enviar_resposta(
+        sessao, conversa, contato, mensagem, resposta_normal, deps.whatsapp, agora
     )
-    mensagem.respondida = True
-    conversa.ultima_msg_em = agora
-    conversa.ultima_msg_origem = OrigemMensagem.BOT
     if conversa.estado == EstadoConversa.NOVA:
         conversa.estado = EstadoConversa.EM_ANDAMENTO
     _registrar_metrica(sessao, "resposta_enviada", conversa.id)
