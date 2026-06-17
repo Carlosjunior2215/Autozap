@@ -78,17 +78,41 @@ async def _enviar_resposta(
     whatsapp: WhatsAppClient,
     agora: datetime,
 ) -> None:
-    """Envia a resposta planejada e registra a mensagem do bot na conversa."""
+    """Registra a resposta como pendente, persiste, envia e confirma.
+
+    A ordem importa para a idempotência: a mensagem do bot é gravada como
+    ``PENDENTE`` e o commit é feito *antes* do envio externo. Assim, se o envio
+    (ou o commit final) falhar, um reprocessamento verá a mensagem do cliente já
+    como ``respondida`` e não reenviará — evitando resposta duplicada.
+    """
+    # Conteúdo a registrar: interativos usam 'corpo'; texto/template usam 'conteudo'.
+    if isinstance(resposta, RespostaBotoes | RespostaLista):
+        texto_registrado, tipo = resposta.corpo, TipoMensagem.INTERATIVO
+    else:
+        texto_registrado, tipo = resposta.conteudo, TipoMensagem.TEXTO
+
+    msg_bot = Mensagem(
+        conversa_id=conversa.id,
+        origem=OrigemMensagem.BOT,
+        texto=texto_registrado,
+        tipo=tipo,
+        status=StatusMensagem.PENDENTE,
+    )
+    sessao.add(msg_bot)
+    mensagem.respondida = True
+    conversa.ultima_msg_em = agora
+    conversa.ultima_msg_origem = OrigemMensagem.BOT
+    # Persiste a intenção de resposta antes do envio externo (idempotência).
+    await sessao.commit()
+
     if isinstance(resposta, RespostaBotoes):
         wa_id = await whatsapp.enviar_botoes(
             contato.telefone, resposta.corpo, list(resposta.botoes)
         )
-        texto_registrado, tipo = resposta.corpo, TipoMensagem.INTERATIVO
     elif isinstance(resposta, RespostaLista):
         wa_id = await whatsapp.enviar_lista(
             contato.telefone, resposta.corpo, resposta.titulo_botao, list(resposta.opcoes)
         )
-        texto_registrado, tipo = resposta.corpo, TipoMensagem.INTERATIVO
     elif isinstance(resposta, RespostaTemplate):
         wa_id = await whatsapp.enviar_template(
             contato.telefone,
@@ -96,24 +120,11 @@ async def _enviar_resposta(
             resposta.idioma,
             list(resposta.parametros) or None,
         )
-        texto_registrado, tipo = resposta.conteudo, TipoMensagem.TEXTO
     else:
         wa_id = await whatsapp.enviar_texto(contato.telefone, resposta.conteudo)
-        texto_registrado, tipo = resposta.conteudo, TipoMensagem.TEXTO
 
-    sessao.add(
-        Mensagem(
-            conversa_id=conversa.id,
-            wa_message_id=wa_id or None,
-            origem=OrigemMensagem.BOT,
-            texto=texto_registrado,
-            tipo=tipo,
-            status=StatusMensagem.ENVIADA,
-        )
-    )
-    mensagem.respondida = True
-    conversa.ultima_msg_em = agora
-    conversa.ultima_msg_origem = OrigemMensagem.BOT
+    msg_bot.status = StatusMensagem.ENVIADA
+    msg_bot.wa_message_id = wa_id or None
 
 
 async def processar(mensagem_id: int, deps: Dependencias) -> ResultadoProcessamento:
@@ -132,6 +143,11 @@ async def _processar(
     # Anti-loop: o bot nunca responde a si mesmo nem a mensagens não-cliente.
     if mensagem.origem != OrigemMensagem.CLIENTE:
         return ResultadoProcessamento(acao="ignorada", motivo="origem nao cliente")
+
+    # Idempotência: se esta mensagem já foi respondida, não reprocessa (evita
+    # reenvio em um retry, mesmo que a conversa tenha recebido mensagens depois).
+    if mensagem.respondida:
+        return ResultadoProcessamento(acao="ignorada", motivo="ja respondida")
 
     conversa = await sessao.get(Conversa, mensagem.conversa_id)
     if conversa is None:

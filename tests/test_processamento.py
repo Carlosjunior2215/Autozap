@@ -312,3 +312,21 @@ async def test_resposta_registra_mensagem_bot_e_marca_respondida(
     assert cliente_msg.respondida is True
     assert bot_msg.status == StatusMensagem.ENVIADA
     assert conversa.ultima_msg_origem == OrigemMensagem.BOT
+
+
+async def test_reprocessar_mensagem_respondida_e_idempotente(
+    dependencias: Dependencias,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    whatsapp_fake: FakeWhatsAppClient,
+) -> None:
+    # Processa uma vez (responde) e, num "retry", não deve reenviar.
+    mensagem_id = await criar_mensagem_cliente(sessionmaker_teste, texto="qual o preço?")
+    primeira = await processar(mensagem_id, dependencias)
+    assert primeira.acao == "respondida"
+    assert len(whatsapp_fake.envios) == 1
+
+    segunda = await processar(mensagem_id, dependencias)
+    assert segunda.acao == "ignorada"
+    assert segunda.motivo == "ja respondida"
+    # Nenhum envio adicional.
+    assert len(whatsapp_fake.envios) == 1

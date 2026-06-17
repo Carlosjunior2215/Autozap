@@ -28,6 +28,7 @@ class StatusMensagem(enum.StrEnum):
     """Status de entrega de uma mensagem."""
 
     RECEBIDA = "recebida"
+    PENDENTE = "pendente"  # resposta do bot registrada, ainda não enviada
     ENVIADA = "enviada"
     ENTREGUE = "entregue"
     LIDA = "lida"
