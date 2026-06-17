@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.deps import obter_enfileirador
 from app.core.config import Configuracoes, obter_configuracoes
-from app.core.db import obter_sessao
+from app.core.db import obter_sessao, obter_sessionmaker
 from app.main import app
 from app.models import Base
 from app.services.processamento import Dependencias
@@ -94,6 +94,7 @@ async def cliente(
 
     app.dependency_overrides[obter_configuracoes] = lambda: config_teste
     app.dependency_overrides[obter_sessao] = _sessao_override
+    app.dependency_overrides[obter_sessionmaker] = lambda: sessionmaker_teste
     app.dependency_overrides[obter_enfileirador] = lambda: enfileirador_fake
 
     transporte = httpx.ASGITransport(app=app)

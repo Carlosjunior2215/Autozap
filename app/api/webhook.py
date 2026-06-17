@@ -1,20 +1,34 @@
 """Rotas do webhook da WhatsApp Cloud API."""
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import Enfileirador, obter_enfileirador
 from app.core.config import Configuracoes, obter_configuracoes
-from app.core.db import obter_sessao
+from app.core.db import obter_sessionmaker
 from app.core.seguranca import verificar_assinatura, verificar_token_webhook
 from app.schemas.webhook import WebhookPayload
 from app.services.ingestao import ingerir_payload
 
 roteador = APIRouter(tags=["webhook"])
+
+
+async def _ingerir_e_enfileirar(
+    dados: dict[str, Any],
+    sessionmaker: async_sessionmaker[AsyncSession],
+    enfileirar: Enfileirador,
+    atraso_seg: int,
+) -> None:
+    """Ingestão + enfileiramento, executados após responder 200 ao webhook."""
+    payload = WebhookPayload.model_validate(dados)
+    async with sessionmaker() as sessao:
+        ids = await ingerir_payload(sessao, payload)
+    for mensagem_id in ids:
+        enfileirar(mensagem_id, atraso_seg)
 
 
 @roteador.get("/webhook")
@@ -33,12 +47,18 @@ async def verificar_webhook(
 @roteador.post("/webhook")
 async def receber_webhook(
     request: Request,
+    tarefas: BackgroundTasks,
     config: Annotated[Configuracoes, Depends(obter_configuracoes)],
-    sessao: Annotated[AsyncSession, Depends(obter_sessao)],
+    sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(obter_sessionmaker)],
     enfileirar: Annotated[Enfileirador, Depends(obter_enfileirador)],
     x_hub_signature_256: Annotated[str | None, Header()] = None,
 ) -> Response:
-    """Recebe eventos: valida a assinatura, persiste e enfileira o processamento."""
+    """Valida a assinatura e responde 200 rápido; ingestão segue em background.
+
+    A Meta reentrega eventos se a resposta demorar/falhar; por isso só fazemos no
+    request o indispensável (assinatura + parse) e delegamos a persistência e o
+    enfileiramento para uma tarefa de fundo.
+    """
     corpo = await request.body()
     if not verificar_assinatura(corpo, x_hub_signature_256, config.whatsapp_app_secret):
         return Response(status_code=403)
@@ -48,10 +68,7 @@ async def receber_webhook(
         return Response(status_code=400)
     if not isinstance(dados, dict):
         return Response(status_code=400)
-    payload = WebhookPayload.model_validate(dados)
-    ids = await ingerir_payload(sessao, payload)
-    # Adia a reavaliação: só responde se seguir "não respondida" após N minutos.
+
     atraso_seg = max(0, config.minutos_sem_resposta * 60)
-    for mensagem_id in ids:
-        enfileirar(mensagem_id, atraso_seg)
+    tarefas.add_task(_ingerir_e_enfileirar, dados, sessionmaker, enfileirar, atraso_seg)
     return Response(status_code=200)
