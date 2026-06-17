@@ -192,3 +192,19 @@ async def test_post_sem_mensagens_nao_enfileira(
     resposta = await _post_webhook(cliente, payload)
     assert resposta.status_code == 200
     assert enfileirador_fake.chamadas == []
+
+
+async def test_post_ignora_eco_do_proprio_numero(
+    cliente: httpx.AsyncClient,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    enfileirador_fake: EnfileiradorFake,
+) -> None:
+    # from igual ao display_phone_number do negócio (15550000000): eco, anti-loop.
+    payload = payload_texto(wa_id="15550000000", msg_id="wamid.ECHO")
+    resposta = await _post_webhook(cliente, payload)
+    assert resposta.status_code == 200
+
+    async with sessionmaker_teste() as sessao:
+        mensagens = list((await sessao.execute(select(Mensagem))).scalars().all())
+    assert mensagens == []
+    assert enfileirador_fake.chamadas == []

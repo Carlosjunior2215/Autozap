@@ -1,5 +1,6 @@
 """Ingestão de mensagens do webhook: normalização, deduplicação e persistência."""
 
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -8,6 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Contato, Conversa, Mensagem
 from app.models.enums import EstadoConversa, OrigemMensagem, StatusMensagem, TipoMensagem
 from app.schemas.webhook import MensagemEntrada, WebhookPayload
+
+
+def _so_digitos(valor: str | None) -> str:
+    """Reduz um número a apenas dígitos, para comparar telefones de forma robusta."""
+    return re.sub(r"\D", "", valor or "")
+
 
 _MAPA_TIPOS: dict[str, TipoMensagem] = {
     "image": TipoMensagem.IMAGEM,
@@ -82,12 +89,19 @@ async def ingerir_payload(sessao: AsyncSession, payload: WebhookPayload) -> list
     for entrada in payload.entry:
         for mudanca in entrada.changes:
             valor = mudanca.value
+            # Número do próprio negócio (vem na metadata do payload, já autenticado).
+            numero_negocio = _so_digitos(
+                valor.metadata.display_phone_number if valor.metadata else None
+            )
             nomes: dict[str, str | None] = {
                 contato.wa_id: (contato.profile.name if contato.profile else None)
                 for contato in valor.contacts
             }
             for msg in valor.messages:
                 if not msg.id or not msg.remetente:
+                    continue
+                # Anti-loop: ignora eco de mensagens do próprio número de negócio.
+                if numero_negocio and _so_digitos(msg.remetente) == numero_negocio:
                     continue
                 if await _mensagem_ja_existe(sessao, msg.id):
                     continue
