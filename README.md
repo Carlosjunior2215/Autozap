@@ -68,7 +68,12 @@ pytest
 - **Fase 2 — Classificação + respostas** ✅ — classificador híbrido (regras + Haiku), regras de negócio (anti-loop, opt-out, rate limit, janela 24h, handoff), respostas via template/Sonnet/interativo.
 - **Fase 3 — Agendamento + admin** ✅ — FSM de agendamento (lista interativa) e endpoints admin protegidos por API key.
 
-**Qualidade:** `ruff` + `mypy` estrito sem erros; **59 testes** (pytest), sem chamadas de rede reais.
+**Qualidade:** `ruff` + `mypy` estrito sem erros; **66 testes** (pytest), sem chamadas de rede reais.
+CI no GitHub Actions (lint, tipos, testes e build da imagem). Melhorias de robustez e o
+backlog em [MELHORIAS.md](MELHORIAS.md).
+
+**Saúde:** `GET /health` (liveness) e `GET /health/ready` (verifica o banco). Ao subir via
+Docker, o serviço `migrate` aplica as migrations antes de `api`/`worker`.
 
 ### Endpoints administrativos (header `X-API-Key`)
 
