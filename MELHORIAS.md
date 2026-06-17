@@ -10,7 +10,7 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > pequenos por bloco; sem `push` sem pedido explícito.
 
 **Concluídos:** #1, #2, #3, #4, #6, #7, #8, #12, #13, #14, #16 e #9 (parcial).
-Restam: #5, #10, #11, #15, #17, #18, #19.
+Restam: #5, #10, #11, #15, #17, #18, #19, #20.
 
 ---
 
@@ -30,6 +30,14 @@ Restam: #5, #10, #11, #15, #17, #18, #19.
 - [x] **#3 — Anti-loop não cobria o próprio número de negócio.** 🟠 · baixo
   - Resolvido: a ingestão descarta mensagens cujo `from` é o `display_phone_number`
     do negócio; `statuses` já eram ignorados. [ingestao.py](app/services/ingestao.py).
+
+- [ ] **#20 — Detectar resposta do atendente (statuses outbound) para parar a automação.** 🟠 · médio
+  - Limitação conhecida do #2: se o atendente responde pelo app durante os N
+    minutos, isso chega como evento `statuses` (outbound), hoje ignorado — então a
+    conversa não é marcada como respondida por humano e a auto-resposta agendada
+    ainda pode disparar.
+  - Ação: processar `value.statuses` (ou mensagens outbound) e marcar
+    `ultima_msg_origem=HUMANO` na conversa do `recipient_id`. Complementa o #2.
 
 ## 2. Robustez de produção 🟠
 
