@@ -11,3 +11,5 @@ __pycache__
 htmlcov
 .env
 *.md
+# O README é exigido pelo pyproject (readme = "README.md") ao instalar o pacote.
+!README.md
