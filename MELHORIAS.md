@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Iteração atual (concluída):** #1, #4, #6, #7, #8, #12, #13, #14, #16 e #9 (parcial).
-Restam: #2, #3, #5, #10, #11, #15, #17, #18, #19.
+**Concluídos:** #1, #2, #3, #4, #6, #7, #8, #12, #13, #14, #16 e #9 (parcial).
+Restam: #5, #10, #11, #15, #17, #18, #19.
 
 ---
 
@@ -22,14 +22,14 @@ Restam: #2, #3, #5, #10, #11, #15, #17, #18, #19.
     `nome_meta`, não responde. [respostas.py](app/services/respostas.py),
     [processamento.py](app/services/processamento.py).
 
-- [ ] **#2 — "Não respondida após N minutos" não tem reavaliação agendada.** 🔴 · médio
-  - Local: [deteccao.py](app/services/deteccao.py), [tasks.py](app/workers/tasks.py).
-  - A task roda no instante do webhook; com `MINUTOS_SEM_RESPOSTA>0` a mensagem é
-    descartada (só funciona com N=0).
-  - Ação: `apply_async(countdown=...)` ou Celery beat para varrer elegíveis.
+- [x] **#2 — "Não respondida após N minutos" não tinha reavaliação agendada.** 🔴 · médio
+  - Resolvido: o webhook enfileira com `countdown` = N·60 (`apply_async`); ao rodar,
+    `mensagem_nao_respondida` reverifica a elegibilidade. [deps.py](app/api/deps.py),
+    [webhook.py](app/api/webhook.py).
 
-- [ ] **#3 — Anti-loop não cobre "outro número de negócio".** 🟠 · baixo
-  - Ação: ignorar `from` == próprio `phone_number_id`; ignorar eventos `statuses`.
+- [x] **#3 — Anti-loop não cobria o próprio número de negócio.** 🟠 · baixo
+  - Resolvido: a ingestão descarta mensagens cujo `from` é o `display_phone_number`
+    do negócio; `statuses` já eram ignorados. [ingestao.py](app/services/ingestao.py).
 
 ## 2. Robustez de produção 🟠
 
