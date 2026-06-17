@@ -68,7 +68,7 @@ pytest
 - **Fase 2 — Classificação + respostas** ✅ — classificador híbrido (regras + Haiku), regras de negócio (anti-loop, opt-out, rate limit, janela 24h, handoff), respostas via template/Sonnet/interativo.
 - **Fase 3 — Agendamento + admin** ✅ — FSM de agendamento (lista interativa) e endpoints admin protegidos por API key.
 
-**Qualidade:** `ruff` + `mypy` estrito sem erros; **69 testes** (pytest), sem chamadas de rede reais.
+**Qualidade:** `ruff` + `mypy` estrito sem erros; **70 testes** (pytest), sem chamadas de rede reais.
 CI no GitHub Actions (lint, tipos, testes e build da imagem). Melhorias de robustez e o
 backlog em [MELHORIAS.md](MELHORIAS.md).
 

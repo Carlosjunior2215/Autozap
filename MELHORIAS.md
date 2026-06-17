@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #6, #7, #8, #12, #13, #14, #16 e #9 (parcial).
-Restam: #5, #10, #11, #15, #17, #18, #19, #20.
+**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #16 e #9 (parcial).
+Restam: #11, #15, #17, #18, #19, #20, #21.
 
 ---
 
@@ -44,9 +44,10 @@ Restam: #5, #10, #11, #15, #17, #18, #19, #20.
 - [x] **#4 — Task Celery sem retry / `acks_late`.** 🟠 · baixo
   - Resolvido: `task_acks_late` + `task_reject_on_worker_lost`. [celery_app.py](app/core/celery_app.py).
 
-- [ ] **#5 — Dual-write não idempotente (envia, depois faz commit).** 🟠 · médio
-  - Risco: envio OK + commit falha → retry reenvia. Ação: registrar a mensagem do
-    bot como `PENDENTE` antes de enviar; ou chave de idempotência.
+- [x] **#5 — Dual-write não idempotente (envia, depois faz commit).** 🟠 · médio
+  - Resolvido: a mensagem do bot é gravada como `PENDENTE` e commitada antes do
+    envio (depois vira `ENVIADA`); guarda de idempotência ignora mensagem do
+    cliente já respondida. [processamento.py](app/services/processamento.py).
 
 - [x] **#6 — Sem timeout/tratamento de erro nas chamadas Anthropic.** 🟠 · baixo
   - Resolvido: `timeout`/`max_retries` no `AsyncAnthropic`; erros viram `ErroIA` e
@@ -65,8 +66,14 @@ Restam: #5, #10, #11, #15, #17, #18, #19, #20.
     cada tarefa (sem mais vazamento). [dependencias.py](app/workers/dependencias.py).
   - Falta: loop persistente por processo de worker para reuso real de pool.
 
-- [ ] **#10 — Webhook processa de forma síncrona antes de responder 200.** 🟠 · médio
-  - Local: [webhook.py](app/api/webhook.py). Ação: ingestão mínima + 200 rápido.
+- [x] **#10 — Webhook processava de forma síncrona antes de responder 200.** 🟠 · médio
+  - Resolvido: o POST valida assinatura + parse e responde 200; ingestão e
+    enfileiramento vão para uma `BackgroundTask`. [webhook.py](app/api/webhook.py).
+
+- [ ] **#21 — Ingestão em background é efêmera (evolução do #10).** 🟠 · médio
+  - A `BackgroundTask` se perde se o processo cair entre o 200 e a conclusão.
+  - Ação: enfileirar o payload bruto numa tarefa Celery (Redis durável) para a
+    ingestão, mantendo o 200 rápido.
 
 - [ ] **#11 — `eventos_metrica` é gravado mas nunca lido.** 🟢 · baixo
   - Ação: endpoint admin de métricas agregadas (ou Prometheus).
