@@ -25,6 +25,20 @@ services:
       timeout: 3s
       retries: 5
 
+  # Aplica as migrations e encerra; api/worker só sobem após concluir com sucesso.
+  migrate:
+    build: .
+    command: alembic upgrade head
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://autozap:autozap@postgres:5432/autozap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -38,11 +52,23 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     ports:
       - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://localhost:8000/health').status==200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build: .
@@ -60,6 +86,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:
