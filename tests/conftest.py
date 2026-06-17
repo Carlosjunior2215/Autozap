@@ -33,13 +33,15 @@ ADMIN_API_KEY_TESTE = "chave-admin-teste"
 
 
 class EnfileiradorFake:
-    """Enfileirador falso: apenas registra os ids enfileirados."""
+    """Enfileirador falso: registra os ids enfileirados e os atrasos pedidos."""
 
     def __init__(self) -> None:
         self.chamadas: list[int] = []
+        self.atrasos: list[int] = []
 
-    def __call__(self, mensagem_id: int) -> None:
+    def __call__(self, mensagem_id: int, atraso_seg: int = 0) -> None:
         self.chamadas.append(mensagem_id)
+        self.atrasos.append(atraso_seg)
 
 
 @pytest.fixture

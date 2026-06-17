@@ -50,6 +50,8 @@ async def receber_webhook(
         return Response(status_code=400)
     payload = WebhookPayload.model_validate(dados)
     ids = await ingerir_payload(sessao, payload)
+    # Adia a reavaliação: só responde se seguir "não respondida" após N minutos.
+    atraso_seg = max(0, config.minutos_sem_resposta * 60)
     for mensagem_id in ids:
-        enfileirar(mensagem_id)
+        enfileirar(mensagem_id, atraso_seg)
     return Response(status_code=200)

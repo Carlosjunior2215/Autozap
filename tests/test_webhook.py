@@ -11,7 +11,12 @@ from app.core.seguranca import gerar_assinatura
 from app.models import Conversa, Mensagem
 from app.models.enums import OrigemMensagem, TipoMensagem
 from tests._payloads import payload_botao, payload_texto
-from tests.conftest import APP_SECRET_TESTE, VERIFY_TOKEN_TESTE, EnfileiradorFake
+from tests.conftest import (
+    ADMIN_API_KEY_TESTE,
+    APP_SECRET_TESTE,
+    VERIFY_TOKEN_TESTE,
+    EnfileiradorFake,
+)
 
 
 async def _post_webhook(
@@ -107,6 +112,31 @@ async def test_post_texto_persiste_e_enfileira(
     assert len(conversas) == 1
     assert conversas[0].ultima_msg_cliente_em is not None
     assert enfileirador_fake.chamadas == [mensagens[0].id]
+
+
+async def test_post_sem_atraso_por_padrao(
+    cliente: httpx.AsyncClient, enfileirador_fake: EnfileiradorFake
+) -> None:
+    # Com MINUTOS_SEM_RESPOSTA=0 (padrão), enfileira sem atraso.
+    await _post_webhook(cliente, payload_texto(msg_id="wamid.SEMATRASO"))
+    assert enfileirador_fake.atrasos == [0]
+
+
+async def test_post_agenda_com_atraso_quando_configurado(
+    cliente: httpx.AsyncClient, enfileirador_fake: EnfileiradorFake
+) -> None:
+    # Com MINUTOS_SEM_RESPOSTA=5, a reavaliação é agendada para 300s à frente.
+    from app.core.config import Configuracoes, obter_configuracoes
+    from app.main import app
+
+    app.dependency_overrides[obter_configuracoes] = lambda: Configuracoes(
+        whatsapp_app_secret=APP_SECRET_TESTE,
+        whatsapp_verify_token=VERIFY_TOKEN_TESTE,
+        admin_api_key=ADMIN_API_KEY_TESTE,
+        minutos_sem_resposta=5,
+    )
+    await _post_webhook(cliente, payload_texto(msg_id="wamid.COMATRASO"))
+    assert enfileirador_fake.atrasos[-1] == 300
 
 
 async def test_post_dedup_nao_reprocessa(
