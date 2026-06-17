@@ -1,8 +1,20 @@
 """Configurações da aplicação, carregadas de variáveis de ambiente (.env)."""
 
 from functools import lru_cache
+from typing import Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Valores de exemplo do .env.example: nunca devem ir para produção.
+_PLACEHOLDERS = frozenset(
+    {
+        "troque-este-token-de-verificacao",
+        "troque-este-app-secret",
+        "troque-esta-chave-admin",
+    }
+)
+_AMBIENTES_PRODUCAO = frozenset({"producao", "produção", "production", "prod"})
 
 
 class Configuracoes(BaseSettings):
@@ -59,6 +71,28 @@ class Configuracoes(BaseSettings):
 
     # Administração
     admin_api_key: str = "troque-esta-chave-admin"
+
+    @model_validator(mode="after")
+    def _exigir_segredos_em_producao(self) -> Self:
+        """Em produção, recusa segredos vazios ou ainda com o valor de exemplo."""
+        if self.ambiente.strip().lower() not in _AMBIENTES_PRODUCAO:
+            return self
+        obrigatorios = {
+            "WHATSAPP_VERIFY_TOKEN": self.whatsapp_verify_token,
+            "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
+            "WHATSAPP_ACCESS_TOKEN": self.whatsapp_access_token,
+            "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
+            "ANTHROPIC_API_KEY": self.anthropic_api_key,
+            "ADMIN_API_KEY": self.admin_api_key,
+        }
+        invalidos = [
+            nome for nome, valor in obrigatorios.items() if not valor or valor in _PLACEHOLDERS
+        ]
+        if invalidos:
+            raise ValueError(
+                "Em produção, defina valores reais para: " + ", ".join(sorted(invalidos))
+            )
+        return self
 
 
 @lru_cache

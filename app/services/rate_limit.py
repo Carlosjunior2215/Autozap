@@ -24,7 +24,10 @@ class RateLimiterRedis:
     async def pode_responder(self, contato_id: int, limite_por_hora: int) -> bool:
         janela = agora_utc().strftime("%Y%m%d%H")
         chave = f"autozap:rl:{contato_id}:{janela}"
-        atual = int(await self._redis.incr(chave))
-        if atual == 1:
-            await self._redis.expire(chave, 3600)
-        return atual <= limite_por_hora
+        # incr + expire numa transação (MULTI/EXEC): evita a chave ficar sem TTL
+        # se o processo cair entre as duas operações.
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.incr(chave)
+            pipe.expire(chave, 3600)
+            atual, _ = await pipe.execute()
+        return int(atual) <= limite_por_hora
