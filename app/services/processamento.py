@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Configuracoes
-from app.integrations.ia import ClassificadorIA, GeradorRespostaIA
+from app.integrations.ia import ClassificadorIA, ErroIA, GeradorRespostaIA
 from app.integrations.whatsapp import WhatsAppClient
 from app.models import Contato, Conversa, EventoMetrica, Intencao, Mensagem
 from app.models.enums import (
@@ -59,6 +59,13 @@ class ResultadoProcessamento:
 
 def _registrar_metrica(sessao: AsyncSession, tipo: str, conversa_id: int) -> None:
     sessao.add(EventoMetrica(tipo=tipo, conversa_id=conversa_id))
+
+
+def _escalar_humano(sessao: AsyncSession, conversa: Conversa, evento: str) -> None:
+    """Pausa o bot na conversa e a coloca na fila de atendimento humano."""
+    conversa.em_atendimento_humano = True
+    conversa.estado = EstadoConversa.AGUARDANDO_HUMANO
+    _registrar_metrica(sessao, evento, conversa.id)
 
 
 async def _enviar_resposta(
@@ -154,9 +161,16 @@ async def _processar(
         await sessao.commit()
         return ResultadoProcessamento(acao="respondida", intencao="agendamento")
 
-    resultado = await classificar_intencao(
-        mensagem.texto or "", deps.classificador_ia, deps.config.modelo_classificacao
-    )
+    try:
+        resultado = await classificar_intencao(
+            mensagem.texto or "", deps.classificador_ia, deps.config.modelo_classificacao
+        )
+    except ErroIA:
+        # Provedor de IA indisponível: não arrisca resposta automática, escala.
+        _escalar_humano(sessao, conversa, "erro_ia_classificacao")
+        await sessao.commit()
+        return ResultadoProcessamento(acao="handoff", motivo="erro_ia")
+
     sessao.add(
         Intencao(
             mensagem_id=mensagem.id,
@@ -169,9 +183,7 @@ async def _processar(
 
     # Confiança baixa: escalona para humano e pausa o bot.
     if resultado.confianca < deps.config.limiar_confianca:
-        conversa.em_atendimento_humano = True
-        conversa.estado = EstadoConversa.AGUARDANDO_HUMANO
-        _registrar_metrica(sessao, "handoff", conversa.id)
+        _escalar_humano(sessao, conversa, "handoff")
         await sessao.commit()
         return ResultadoProcessamento(
             acao="handoff",
@@ -195,9 +207,16 @@ async def _processar(
 
     # Demais intenções: template, geração por IA ou botões (ajuda).
     dentro = dentro_da_janela_24h(conversa.ultima_msg_cliente_em, agora)
-    resposta_normal = await montar_resposta(
-        sessao, resultado.intencao, dentro, deps.gerador_ia, mensagem.texto or ""
-    )
+    try:
+        resposta_normal = await montar_resposta(
+            sessao, resultado.intencao, dentro, deps.gerador_ia, mensagem.texto or ""
+        )
+    except ErroIA:
+        _escalar_humano(sessao, conversa, "erro_ia_geracao")
+        await sessao.commit()
+        return ResultadoProcessamento(
+            acao="handoff", intencao=resultado.intencao.value, motivo="erro_ia"
+        )
     if resposta_normal is None:
         _registrar_metrica(sessao, "sem_resposta_fora_janela", conversa.id)
         await sessao.commit()

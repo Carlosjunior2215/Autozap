@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.integrations.ia import ResultadoIntencao
+from app.integrations.ia import ErroIA, ResultadoIntencao
 from app.models import Contato, Conversa, Intencao, Mensagem, Template
 from app.models.enums import OrigemMensagem, StatusMensagem
 from app.services.processamento import Dependencias, processar
@@ -89,6 +89,46 @@ async def test_baixa_confianca_escalona_para_humano(
     resultado = await processar(mensagem_id, dependencias)
 
     assert resultado.acao == "handoff"
+    assert whatsapp_fake.envios == []
+
+    async with sessionmaker_teste() as sessao:
+        conversa = (await sessao.execute(select(Conversa))).scalar_one()
+    assert conversa.em_atendimento_humano is True
+
+
+async def test_erro_ia_na_classificacao_escala_para_humano(
+    dependencias: Dependencias,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    classificador_fake: FakeClassificadorIA,
+    whatsapp_fake: FakeWhatsAppClient,
+) -> None:
+    # Texto que não casa as regras força o uso do classificador de IA, que falha.
+    classificador_fake.erro = ErroIA("indisponivel")
+    mensagem_id = await criar_mensagem_cliente(sessionmaker_teste, texto="bom dia, tudo bem?")
+    resultado = await processar(mensagem_id, dependencias)
+
+    assert resultado.acao == "handoff"
+    assert resultado.motivo == "erro_ia"
+    assert whatsapp_fake.envios == []
+
+    async with sessionmaker_teste() as sessao:
+        conversa = (await sessao.execute(select(Conversa))).scalar_one()
+    assert conversa.em_atendimento_humano is True
+
+
+async def test_erro_ia_na_geracao_escala_para_humano(
+    dependencias: Dependencias,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    gerador_fake: FakeGeradorRespostaIA,
+    whatsapp_fake: FakeWhatsAppClient,
+) -> None:
+    # "qual o preço?" cai em serviços por regra; sem template, usa a IA, que falha.
+    gerador_fake.erro = ErroIA("indisponivel")
+    mensagem_id = await criar_mensagem_cliente(sessionmaker_teste, texto="qual o preço?")
+    resultado = await processar(mensagem_id, dependencias)
+
+    assert resultado.acao == "handoff"
+    assert resultado.motivo == "erro_ia"
     assert whatsapp_fake.envios == []
 
     async with sessionmaker_teste() as sessao:

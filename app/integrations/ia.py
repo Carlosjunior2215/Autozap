@@ -6,8 +6,17 @@ As chamadas reais ficam atrás dos Protocols :class:`ClassificadorIA` e
 
 from typing import Protocol
 
-from anthropic import AsyncAnthropic
+from anthropic import APIError, AsyncAnthropic
 from pydantic import BaseModel, Field
+
+
+class ErroIA(Exception):
+    """Falha ao chamar o provedor de IA (timeout, indisponibilidade, etc.).
+
+    Exceção de domínio: isola o restante do código do SDK da Anthropic, para que
+    o processamento possa tratar a falha (ex.: escalar para humano) sem acoplar.
+    """
+
 
 PROMPT_CLASSIFICACAO = """Você classifica a intenção de mensagens de clientes \
 de um negócio no WhatsApp. Categorias possíveis:
@@ -56,13 +65,16 @@ class ClassificadorHaiku:
 
     async def classificar(self, texto: str, contexto: str | None = None) -> ResultadoIntencao:
         conteudo = texto if contexto is None else f"{contexto}\n\nMensagem: {texto}"
-        resposta = await self._cliente.messages.parse(
-            model=self._modelo,
-            max_tokens=256,
-            system=PROMPT_CLASSIFICACAO,
-            messages=[{"role": "user", "content": conteudo}],
-            output_format=ResultadoIntencao,
-        )
+        try:
+            resposta = await self._cliente.messages.parse(
+                model=self._modelo,
+                max_tokens=256,
+                system=PROMPT_CLASSIFICACAO,
+                messages=[{"role": "user", "content": conteudo}],
+                output_format=ResultadoIntencao,
+            )
+        except APIError as exc:
+            raise ErroIA("falha ao classificar intenção") from exc
         if resposta.parsed_output is None:
             return ResultadoIntencao(intencao="outros", confianca=0.0)
         return resposta.parsed_output
@@ -79,12 +91,15 @@ class GeradorSonnet:
         partes = [f"Intenção identificada: {intencao}.", f"Mensagem do cliente: {texto_cliente}"]
         if contexto:
             partes.append(f"Contexto: {contexto}")
-        resposta = await self._cliente.messages.create(
-            model=self._modelo,
-            max_tokens=1024,
-            system=PROMPT_RESPOSTA,
-            messages=[{"role": "user", "content": "\n".join(partes)}],
-        )
+        try:
+            resposta = await self._cliente.messages.create(
+                model=self._modelo,
+                max_tokens=1024,
+                system=PROMPT_RESPOSTA,
+                messages=[{"role": "user", "content": "\n".join(partes)}],
+            )
+        except APIError as exc:
+            raise ErroIA("falha ao gerar resposta") from exc
         for bloco in resposta.content:
             if bloco.type == "text":
                 return bloco.text

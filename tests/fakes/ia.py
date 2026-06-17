@@ -9,9 +9,12 @@ class FakeClassificadorIA:
     def __init__(self, resultado: ResultadoIntencao | None = None) -> None:
         self.resultado = resultado or ResultadoIntencao(intencao="outros", confianca=0.9)
         self.chamadas: list[str] = []
+        self.erro: Exception | None = None
 
     async def classificar(self, texto: str, contexto: str | None = None) -> ResultadoIntencao:
         self.chamadas.append(texto)
+        if self.erro is not None:
+            raise self.erro
         return self.resultado
 
 
@@ -21,7 +24,10 @@ class FakeGeradorRespostaIA:
     def __init__(self, texto: str = "Posso ajudar com isso!") -> None:
         self.texto = texto
         self.chamadas: list[tuple[str, str]] = []
+        self.erro: Exception | None = None
 
     async def gerar(self, intencao: str, texto_cliente: str, contexto: str | None = None) -> str:
         self.chamadas.append((intencao, texto_cliente))
+        if self.erro is not None:
+            raise self.erro
         return self.texto

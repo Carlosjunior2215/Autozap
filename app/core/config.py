@@ -37,6 +37,11 @@ class Configuracoes(BaseSettings):
     anthropic_api_key: str = ""
     modelo_classificacao: str = "claude-haiku-4-5"
     modelo_resposta: str = "claude-sonnet-4-6"
+    anthropic_timeout_seg: float = 30.0
+    anthropic_max_retries: int = 2
+
+    # WhatsApp (HTTP)
+    whatsapp_timeout_seg: float = 10.0
 
     # Regras de negócio
     minutos_sem_resposta: int = 0
