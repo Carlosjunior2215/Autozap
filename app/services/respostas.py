@@ -38,7 +38,18 @@ class RespostaLista:
     origem_conteudo: str = "fixo"
 
 
-RespostaPlanejada = RespostaTexto | RespostaBotoes | RespostaLista
+@dataclass(frozen=True)
+class RespostaTemplate:
+    """Template aprovado pela Meta (único formato permitido fora da janela 24h)."""
+
+    nome_meta: str
+    idioma: str
+    conteudo: str  # texto equivalente, apenas para registro/auditoria
+    parametros: tuple[str, ...] = ()
+    origem_conteudo: str = "template"
+
+
+RespostaPlanejada = RespostaTexto | RespostaBotoes | RespostaLista | RespostaTemplate
 
 _BOTOES_AJUDA: tuple[OpcaoInterativa, ...] = (
     OpcaoInterativa(id="menu_agendamento", titulo="Agendar"),
@@ -70,8 +81,14 @@ async def montar_resposta(
     template = await _buscar_template(sessao, intencao.value)
 
     if not dentro_janela_24h:
-        if template is not None and template.aprovado_meta:
-            return RespostaTexto(conteudo=template.conteudo, origem_conteudo="template")
+        # Fora da janela, a Cloud API só aceita template aprovado (type:template),
+        # referenciado pelo nome registrado na Meta — texto livre é recusado.
+        if template is not None and template.aprovado_meta and template.nome_meta:
+            return RespostaTemplate(
+                nome_meta=template.nome_meta,
+                idioma=template.idioma,
+                conteudo=template.conteudo,
+            )
         return None
 
     if intencao == CategoriaIntencao.AJUDA:

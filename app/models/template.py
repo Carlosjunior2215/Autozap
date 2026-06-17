@@ -19,4 +19,7 @@ class Template(Base):
     conteudo: Mapped[str] = mapped_column(Text)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
     aprovado_meta: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Nome do template registrado na Meta (obrigatório p/ enviar fora da janela 24h).
+    nome_meta: Mapped[str | None] = mapped_column(String(128), default=None)
+    idioma: Mapped[str] = mapped_column(String(10), default="pt_BR", server_default="pt_BR")
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

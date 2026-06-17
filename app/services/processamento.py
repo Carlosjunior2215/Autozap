@@ -30,6 +30,7 @@ from app.services.respostas import (
     RespostaBotoes,
     RespostaLista,
     RespostaPlanejada,
+    RespostaTemplate,
     montar_resposta,
 )
 from app.services.tempo import agora_utc
@@ -88,6 +89,14 @@ async def _enviar_resposta(
             contato.telefone, resposta.corpo, resposta.titulo_botao, list(resposta.opcoes)
         )
         texto_registrado, tipo = resposta.corpo, TipoMensagem.INTERATIVO
+    elif isinstance(resposta, RespostaTemplate):
+        wa_id = await whatsapp.enviar_template(
+            contato.telefone,
+            resposta.nome_meta,
+            resposta.idioma,
+            list(resposta.parametros) or None,
+        )
+        texto_registrado, tipo = resposta.conteudo, TipoMensagem.TEXTO
     else:
         wa_id = await whatsapp.enviar_texto(contato.telefone, resposta.conteudo)
         texto_registrado, tipo = resposta.conteudo, TipoMensagem.TEXTO

@@ -220,6 +220,8 @@ async def test_fora_janela_usa_template_aprovado(
                 conteudo="Tabela de serviços aprovada",
                 ativo=True,
                 aprovado_meta=True,
+                nome_meta="tabela_servicos",
+                idioma="pt_BR",
             )
         )
         await sessao.commit()
@@ -230,8 +232,31 @@ async def test_fora_janela_usa_template_aprovado(
     )
     resultado = await processar(mensagem_id, dependencias)
 
+    # Fora da janela, deve sair como template aprovado (não texto livre).
     assert resultado.acao == "respondida"
-    assert whatsapp_fake.envios[0].conteudo == "Tabela de serviços aprovada"
+    assert whatsapp_fake.envios[0].metodo == "template"
+    assert whatsapp_fake.envios[0].conteudo == "tabela_servicos"
+    assert whatsapp_fake.envios[0].extra["idioma"] == "pt_BR"
+
+
+async def test_fora_janela_template_sem_nome_meta_nao_responde(
+    dependencias: Dependencias,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    whatsapp_fake: FakeWhatsAppClient,
+) -> None:
+    # Template aprovado, mas sem nome registrado na Meta: não dá para enviar fora da janela.
+    async with sessionmaker_teste() as sessao:
+        sessao.add(Template(assunto="servicos", conteudo="x", ativo=True, aprovado_meta=True))
+        await sessao.commit()
+
+    antiga = agora_utc() - timedelta(hours=30)
+    mensagem_id = await criar_mensagem_cliente(
+        sessionmaker_teste, texto="qual o preço?", ultima_msg_cliente_em=antiga
+    )
+    resultado = await processar(mensagem_id, dependencias)
+
+    assert resultado.acao == "sem_resposta"
+    assert whatsapp_fake.envios == []
 
 
 async def test_fora_janela_sem_template_nao_responde(

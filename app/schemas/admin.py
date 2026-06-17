@@ -26,6 +26,8 @@ class TemplateEntrada(BaseModel):
     conteudo: str
     ativo: bool = True
     aprovado_meta: bool = False
+    nome_meta: str | None = None
+    idioma: str = "pt_BR"
 
 
 class TemplateAtualizacao(BaseModel):
@@ -36,6 +38,8 @@ class TemplateAtualizacao(BaseModel):
     conteudo: str | None = None
     ativo: bool | None = None
     aprovado_meta: bool | None = None
+    nome_meta: str | None = None
+    idioma: str | None = None
 
 
 class TemplateSaida(BaseModel):
@@ -49,6 +53,8 @@ class TemplateSaida(BaseModel):
     conteudo: str
     ativo: bool
     aprovado_meta: bool
+    nome_meta: str | None
+    idioma: str
 
 
 class PromocaoEntrada(BaseModel):
