@@ -77,3 +77,40 @@ def payload_lista(
         "interactive": {"type": "list_reply", "list_reply": {"id": reply_id, "title": titulo}},
     }
     return _envelope(wa_id, msg_id, mensagem, nome)
+
+
+def payload_status(
+    *,
+    recipient_id: str = _WA_ID_PADRAO,
+    status_id: str = "wamid.OUT",
+    status: str = "delivered",
+) -> dict[str, Any]:
+    """Payload de um evento de status de entrega (mensagem outbound)."""
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "ENTRY1",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "metadata": {
+                                "display_phone_number": "15550000000",
+                                "phone_number_id": "PNID",
+                            },
+                            "statuses": [
+                                {
+                                    "id": status_id,
+                                    "status": status,
+                                    "timestamp": "1700000003",
+                                    "recipient_id": recipient_id,
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }

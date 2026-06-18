@@ -1,10 +1,12 @@
 """Testes do serviço de ingestão (normalização e persistência)."""
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Contato, Conversa, Mensagem
-from app.models.enums import EstadoConversa, TipoMensagem
+from app.models.enums import EstadoConversa, OrigemMensagem, TipoMensagem
 from app.schemas.webhook import (
     Interativo,
     MensagemEntrada,
@@ -13,8 +15,9 @@ from app.schemas.webhook import (
     TextoEntrada,
     WebhookPayload,
 )
+from app.services.deteccao import mensagem_nao_respondida
 from app.services.ingestao import ingerir_e_enfileirar, ingerir_payload, normalizar
-from tests._payloads import payload_botao, payload_texto
+from tests._payloads import payload_botao, payload_status, payload_texto
 from tests.conftest import EnfileiradorFake
 
 
@@ -180,3 +183,82 @@ async def test_ingerir_e_enfileirar_dedup_nao_reenfileira(
     assert len(primeiros) == 1
     assert segundos == []
     assert enfileirador_fake.chamadas == primeiros
+
+
+# --- statuses outbound: resposta do atendente pausa a automação (#20) ---------
+
+
+async def _conversa_do_cliente(
+    sessionmaker: async_sessionmaker[AsyncSession], wa_id: str, msg_id: str
+) -> int:
+    """Cria contato+conversa ingerindo uma mensagem do cliente; devolve a conversa id."""
+    async with sessionmaker() as sessao:
+        await ingerir_payload(
+            sessao, WebhookPayload.model_validate(payload_texto(wa_id=wa_id, msg_id=msg_id))
+        )
+        return (await sessao.execute(select(Conversa.id))).scalar_one()
+
+
+async def test_status_do_atendente_marca_humano(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+) -> None:
+    wa = "5511700000001"
+    await _conversa_do_cliente(sessionmaker_teste, wa, "wamid.C1")
+
+    # Status outbound cujo id não é de nenhuma mensagem nossa: envio do atendente.
+    async with sessionmaker_teste() as sessao:
+        await ingerir_payload(
+            sessao,
+            WebhookPayload.model_validate(
+                payload_status(recipient_id=wa, status_id="wamid.MANUAL")
+            ),
+        )
+
+    async with sessionmaker_teste() as sessao:
+        conversa = (await sessao.execute(select(Conversa))).scalar_one()
+    assert conversa.ultima_msg_origem == OrigemMensagem.HUMANO
+    # Efeito do #20: a conversa deixa de ser elegível para auto-resposta (#2).
+    assert not mensagem_nao_respondida(conversa, datetime.now(UTC), minutos_sem_resposta=0)
+
+
+async def test_status_do_proprio_bot_nao_marca_humano(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+) -> None:
+    wa = "5511700000002"
+    conversa_id = await _conversa_do_cliente(sessionmaker_teste, wa, "wamid.C2")
+    # Mensagem do bot já enviada (wamid conhecido), como faz o processamento.
+    async with sessionmaker_teste() as sessao:
+        sessao.add(
+            Mensagem(
+                conversa_id=conversa_id,
+                origem=OrigemMensagem.BOT,
+                wa_message_id="wamid.BOT",
+                tipo=TipoMensagem.TEXTO,
+            )
+        )
+        await sessao.commit()
+
+    # O status é da mensagem do bot: não deve ser tratado como resposta humana.
+    async with sessionmaker_teste() as sessao:
+        await ingerir_payload(
+            sessao,
+            WebhookPayload.model_validate(payload_status(recipient_id=wa, status_id="wamid.BOT")),
+        )
+
+    async with sessionmaker_teste() as sessao:
+        conversa = (await sessao.execute(select(Conversa))).scalar_one()
+    assert conversa.ultima_msg_origem == OrigemMensagem.CLIENTE
+
+
+async def test_status_de_recipient_desconhecido_e_ignorado(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+) -> None:
+    # Sem contato/conversa para o recipient: no-op, sem erro.
+    async with sessionmaker_teste() as sessao:
+        await ingerir_payload(
+            sessao,
+            WebhookPayload.model_validate(payload_status(recipient_id="5511999888777")),
+        )
+    async with sessionmaker_teste() as sessao:
+        conversas = list((await sessao.execute(select(Conversa))).scalars().all())
+    assert conversas == []
