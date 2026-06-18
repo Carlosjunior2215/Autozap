@@ -1,6 +1,6 @@
 """Dependências de injeção das rotas FastAPI."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class Enfileirador(Protocol):
@@ -22,5 +22,21 @@ def obter_enfileirador() -> Enfileirador:
             processar_mensagem.apply_async((mensagem_id,), countdown=atraso_seg)
         else:
             processar_mensagem.delay(mensagem_id)
+
+    return enfileirar
+
+
+class EnfileiradorIngestao(Protocol):
+    """Função que enfileira a ingestão durável do payload bruto do webhook."""
+
+    def __call__(self, payload_bruto: dict[str, Any]) -> None: ...
+
+
+def obter_enfileirador_ingestao() -> EnfileiradorIngestao:
+    """Retorna o enfileirador de ingestão (envia o payload bruto à tarefa Celery)."""
+    from app.workers.tasks import ingerir_webhook
+
+    def enfileirar(payload_bruto: dict[str, Any]) -> None:
+        ingerir_webhook.delay(payload_bruto)
 
     return enfileirar

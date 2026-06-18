@@ -6,6 +6,7 @@ configurações e enfileirador) para não tocar serviços reais.
 """
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 import pytest
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from app.api.deps import obter_enfileirador
+from app.api.deps import obter_enfileirador_ingestao
 from app.core.config import Configuracoes, obter_configuracoes
 from app.core.db import obter_sessao, obter_sessionmaker
 from app.main import app
@@ -42,6 +43,16 @@ class EnfileiradorFake:
     def __call__(self, mensagem_id: int, atraso_seg: int = 0) -> None:
         self.chamadas.append(mensagem_id)
         self.atrasos.append(atraso_seg)
+
+
+class EnfileiradorIngestaoFake:
+    """Enfileirador de ingestão falso: registra os payloads brutos recebidos."""
+
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def __call__(self, payload_bruto: dict[str, Any]) -> None:
+        self.payloads.append(payload_bruto)
 
 
 @pytest.fixture
@@ -81,10 +92,16 @@ def enfileirador_fake() -> EnfileiradorFake:
 
 
 @pytest.fixture
+def enfileirador_ingestao_fake() -> EnfileiradorIngestaoFake:
+    """Instância do enfileirador de ingestão falso usada no teste."""
+    return EnfileiradorIngestaoFake()
+
+
+@pytest.fixture
 async def cliente(
     config_teste: Configuracoes,
     sessionmaker_teste: async_sessionmaker[AsyncSession],
-    enfileirador_fake: EnfileiradorFake,
+    enfileirador_ingestao_fake: EnfileiradorIngestaoFake,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Cliente HTTP com as dependências da aplicação sobrescritas."""
 
@@ -95,7 +112,7 @@ async def cliente(
     app.dependency_overrides[obter_configuracoes] = lambda: config_teste
     app.dependency_overrides[obter_sessao] = _sessao_override
     app.dependency_overrides[obter_sessionmaker] = lambda: sessionmaker_teste
-    app.dependency_overrides[obter_enfileirador] = lambda: enfileirador_fake
+    app.dependency_overrides[obter_enfileirador_ingestao] = lambda: enfileirador_ingestao_fake
 
     transporte = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transporte, base_url="http://test") as c:

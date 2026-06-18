@@ -13,8 +13,9 @@ from app.schemas.webhook import (
     TextoEntrada,
     WebhookPayload,
 )
-from app.services.ingestao import ingerir_payload, normalizar
-from tests._payloads import payload_texto
+from app.services.ingestao import ingerir_e_enfileirar, ingerir_payload, normalizar
+from tests._payloads import payload_botao, payload_texto
+from tests.conftest import EnfileiradorFake
 
 
 def test_normalizar_texto() -> None:
@@ -114,3 +115,68 @@ async def test_ingerir_reusa_conversa_existente(
 
     assert len(conversas) == 1
     assert len(mensagens) == 2
+
+
+# --- ingerir_e_enfileirar (orquestração da tarefa de ingestão durável, #21) ---
+
+
+async def test_ingerir_e_enfileirar_persiste_e_enfileira(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    enfileirador_fake: EnfileiradorFake,
+) -> None:
+    ids = await ingerir_e_enfileirar(
+        payload_texto(msg_id="wamid.E1"), sessionmaker_teste, enfileirador_fake, atraso_seg=0
+    )
+
+    async with sessionmaker_teste() as sessao:
+        mensagem = (await sessao.execute(select(Mensagem))).scalar_one()
+
+    assert ids == [mensagem.id]
+    assert mensagem.tipo == TipoMensagem.TEXTO
+    assert enfileirador_fake.chamadas == [mensagem.id]
+    assert enfileirador_fake.atrasos == [0]
+
+
+async def test_ingerir_e_enfileirar_propaga_atraso(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    enfileirador_fake: EnfileiradorFake,
+) -> None:
+    await ingerir_e_enfileirar(
+        payload_botao(msg_id="wamid.E2"), sessionmaker_teste, enfileirador_fake, atraso_seg=300
+    )
+    assert enfileirador_fake.atrasos == [300]
+
+
+async def test_ingerir_e_enfileirar_sem_mensagens_nao_enfileira(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    enfileirador_fake: EnfileiradorFake,
+) -> None:
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {"statuses": [{"id": "wamid.S", "status": "delivered"}]},
+                    }
+                ]
+            }
+        ],
+    }
+    ids = await ingerir_e_enfileirar(payload, sessionmaker_teste, enfileirador_fake, atraso_seg=0)
+    assert ids == []
+    assert enfileirador_fake.chamadas == []
+
+
+async def test_ingerir_e_enfileirar_dedup_nao_reenfileira(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    enfileirador_fake: EnfileiradorFake,
+) -> None:
+    payload = payload_texto(msg_id="wamid.EDUP")
+    primeiros = await ingerir_e_enfileirar(payload, sessionmaker_teste, enfileirador_fake, 0)
+    segundos = await ingerir_e_enfileirar(payload, sessionmaker_teste, enfileirador_fake, 0)
+
+    assert len(primeiros) == 1
+    assert segundos == []
+    assert enfileirador_fake.chamadas == primeiros

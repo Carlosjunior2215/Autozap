@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #16 e #9 (parcial).
-Restam: #11, #15, #17, #18, #19, #20, #21.
+**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #16, #21 e #9 (parcial).
+Restam: #11, #15, #17, #18, #19, #20.
 
 ---
 
@@ -70,10 +70,13 @@ Restam: #11, #15, #17, #18, #19, #20, #21.
   - Resolvido: o POST valida assinatura + parse e responde 200; ingestão e
     enfileiramento vão para uma `BackgroundTask`. [webhook.py](app/api/webhook.py).
 
-- [ ] **#21 — Ingestão em background é efêmera (evolução do #10).** 🟠 · médio
-  - A `BackgroundTask` se perde se o processo cair entre o 200 e a conclusão.
-  - Ação: enfileirar o payload bruto numa tarefa Celery (Redis durável) para a
-    ingestão, mantendo o 200 rápido.
+- [x] **#21 — Ingestão em background é efêmera (evolução do #10).** 🟠 · médio
+  - Resolvido: o webhook valida assinatura/parse e enfileira o payload bruto na
+    tarefa Celery `ingerir_webhook` (broker Redis durável), respondendo 200 rápido;
+    a tarefa persiste e enfileira o processamento. A orquestração
+    `ingerir_e_enfileirar` é reutilizada/testada de forma isolada.
+    [webhook.py](app/api/webhook.py), [tasks.py](app/workers/tasks.py),
+    [deps.py](app/api/deps.py), [ingestao.py](app/services/ingestao.py).
 
 - [ ] **#11 — `eventos_metrica` é gravado mas nunca lido.** 🟢 · baixo
   - Ação: endpoint admin de métricas agregadas (ou Prometheus).
@@ -112,6 +115,10 @@ Restam: #11, #15, #17, #18, #19, #20, #21.
 
 ## Histórico
 
+- **Ingestão durável (2026-06):** #21 — webhook passou a só enfileirar o payload
+  bruto numa tarefa Celery (`ingerir_webhook`), eliminando a `BackgroundTask`
+  efêmera do #10; ingestão+enfileiramento extraídos em `ingerir_e_enfileirar`.
+  `ruff`/`mypy`/`pytest` verdes (69 testes).
 - **Iteração de robustez (2026-06):** entregues #1, #4, #6, #7, #8, #9 (parcial),
   #12, #13, #14, #16 em 5 blocos commitados; `ruff`/`mypy`/`pytest` verdes e
   migration `7f9a4828c29c` validada no Postgres real.
