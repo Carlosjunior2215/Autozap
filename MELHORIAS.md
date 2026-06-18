@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #15, #16, #20, #21 e #9 (parcial).
-Restam: #11, #17, #18, #19.
+**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #11, #12, #13, #14, #15, #16, #20, #21 e #9 (parcial).
+Restam: #17, #18, #19.
 
 ---
 
@@ -79,8 +79,10 @@ Restam: #11, #17, #18, #19.
     [webhook.py](app/api/webhook.py), [tasks.py](app/workers/tasks.py),
     [deps.py](app/api/deps.py), [ingestao.py](app/services/ingestao.py).
 
-- [ ] **#11 — `eventos_metrica` é gravado mas nunca lido.** 🟢 · baixo
-  - Ação: endpoint admin de métricas agregadas (ou Prometheus).
+- [x] **#11 — `eventos_metrica` é gravado mas nunca lido.** 🟢 · baixo
+  - Resolvido: `GET /admin/metricas` agrega por tipo (quantidade + soma), com
+    filtro opcional `desde_horas`. Serviço `agregar_metricas` (GROUP BY).
+    [metricas.py](app/services/metricas.py), [admin.py](app/api/admin.py).
 
 ## 4. Observabilidade / operação 🟠
 
@@ -121,6 +123,8 @@ Restam: #11, #17, #18, #19.
 
 ## Histórico
 
+- **Métricas (2026-06):** #11 — `GET /admin/metricas` agrega `eventos_metrica`
+  por tipo (com filtro `desde_horas`), expondo o que já era coletado. 93 testes.
 - **Observabilidade (2026-06):** #15 — logging estruturado (JSON) com correlação
   ponta a ponta (`X-Request-ID` na API → header de tarefa no worker) e
   mascaramento de telefone (LGPD). 89 testes verdes.
