@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #11, #12, #13, #14, #15, #16, #20, #21 e #9 (parcial).
-Restam: #17, #18, #19.
+**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #11, #12, #13, #14, #15, #16, #18, #20, #21 e #9 (parcial).
+Restam: #17, #19.
 
 ---
 
@@ -110,8 +110,13 @@ Restam: #17, #18, #19.
 
 - [ ] **#17 — Sem medição de cobertura.** 🟢 · baixo · `pytest-cov`.
 
-- [ ] **#18 — Faltam testes:** payload `statuses`, falha da IA (feito p/ processamento;
-  falta para os clientes reais), `RateLimiterRedis` real (com `fakeredis`). 🟢 · baixo-médio.
+- [x] **#18 — Faltam testes:** payload `statuses`, falha da IA (clientes reais) e
+  `RateLimiterRedis` real. 🟢 · baixo-médio.
+  - Resolvido: `statuses` coberto junto ao #20; `test_ia.py` exercita
+    `ClassificadorHaiku`/`GeradorSonnet` (parsing, fallback, contexto e `APIError`
+    → `ErroIA`) com um dublê do SDK; `test_rate_limit.py` testa o
+    `RateLimiterRedis` real com `fakeredis` (limite, TTL, janelas). `fakeredis`
+    entrou nas deps de dev.
 
 ## 6. Dev local (Windows) 🟢
 
@@ -123,6 +128,9 @@ Restam: #17, #18, #19.
 
 ## Histórico
 
+- **Cobertura de integrações (2026-06):** #18 — testes dos clientes reais de IA
+  (com dublê do SDK) e do `RateLimiterRedis` real (`fakeredis`); `statuses` já
+  cobertos no #20. 105 testes verdes.
 - **Métricas (2026-06):** #11 — `GET /admin/metricas` agrega `eventos_metrica`
   por tipo (com filtro `desde_horas`), expondo o que já era coletado. 93 testes.
 - **Observabilidade (2026-06):** #15 — logging estruturado (JSON) com correlação
