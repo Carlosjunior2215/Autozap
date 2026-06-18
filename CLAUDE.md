@@ -32,6 +32,7 @@ Copy-Item .env.example .env
 | Tipos | `mypy app tests` |
 | Testes | `pytest` |
 | Testes (1 arquivo) | `pytest tests/test_smoke.py` |
+| Cobertura (gate 88%) | `pytest --cov --cov-report=term-missing` |
 | API local | `uvicorn app.main:app --reload` |
 | Worker (Fase 1+) | `celery -A app.core.celery_app.celery_app worker --loglevel=info` |
 | Migrations aplicar (Fase 1+) | `alembic upgrade head` |

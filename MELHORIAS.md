@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #11, #12, #13, #14, #15, #16, #18, #20, #21 e #9 (parcial).
-Restam: #17, #19.
+**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #11, #12, #13, #14, #15, #16, #17, #18, #20, #21 e #9 (parcial).
+Restam: #19.
 
 ---
 
@@ -108,7 +108,10 @@ Restam: #17, #19.
 - [x] **#16 — Sem CI.** 🟠 · baixo
   - Resolvido: GitHub Actions (lint, tipos, testes, build Docker). [ci.yml](.github/workflows/ci.yml).
 
-- [ ] **#17 — Sem medição de cobertura.** 🟢 · baixo · `pytest-cov`.
+- [x] **#17 — Sem medição de cobertura.** 🟢 · baixo · `pytest-cov`.
+  - Resolvido: `pytest-cov` configurado em `pyproject.toml` (branch on, gate
+    `fail_under=88`, ~90% atual), omitindo só a composição de infra do worker; o
+    CI roda `pytest --cov`. `pytest` puro segue sem gate (runs isolados).
 
 - [x] **#18 — Faltam testes:** payload `statuses`, falha da IA (clientes reais) e
   `RateLimiterRedis` real. 🟢 · baixo-médio.
@@ -128,6 +131,8 @@ Restam: #17, #19.
 
 ## Histórico
 
+- **Cobertura medida (2026-06):** #17 — `pytest-cov` com branch coverage e gate de
+  88% (~90% atual) no CI; `pytest` puro permanece sem gate. 105 testes verdes.
 - **Cobertura de integrações (2026-06):** #18 — testes dos clientes reais de IA
   (com dublê do SDK) e do `RateLimiterRedis` real (`fakeredis`); `statuses` já
   cobertos no #20. 105 testes verdes.

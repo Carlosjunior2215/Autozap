@@ -26,8 +26,8 @@ jobs:
         run: ruff format --check .
       - name: Mypy (tipos)
         run: mypy app tests
-      - name: Pytest
-        run: pytest -q
+      - name: Pytest (com cobertura)
+        run: pytest --cov --cov-report=term-missing
 
   docker:
     name: Build da imagem
