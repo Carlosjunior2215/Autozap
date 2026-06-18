@@ -16,6 +16,7 @@ from app.api.webhook import roteador as roteador_webhook
 from app.core.config import obter_configuracoes
 from app.core.db import obter_engine, obter_sessao
 from app.core.logging import configurar_logging
+from app.core.runtime import configurar_event_loop
 
 
 @asynccontextmanager
@@ -27,6 +28,7 @@ async def ciclo_de_vida(_aplicacao: FastAPI) -> AsyncIterator[None]:
 
 def criar_app() -> FastAPI:
     """Cria e configura a instância FastAPI da aplicação."""
+    configurar_event_loop()
     config = obter_configuracoes()
     configurar_logging(nivel=config.log_nivel, json_logs=config.log_json)
     aplicacao = FastAPI(

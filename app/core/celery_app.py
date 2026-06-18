@@ -3,6 +3,10 @@
 from celery import Celery
 
 from app.core.config import obter_configuracoes
+from app.core.runtime import configurar_event_loop
+
+# Ajusta o event loop (Windows/dev) antes de qualquer ``asyncio.run`` de tarefa.
+configurar_event_loop()
 
 _config = obter_configuracoes()
 

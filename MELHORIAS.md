@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #11, #12, #13, #14, #15, #16, #17, #18, #20, #21 e #9 (parcial).
-Restam: #19.
+**Concluídos:** #1–#8, #10–#18, #20 e #21; #9 segue parcial (falta reuso de pool
+por loop persistente do worker). Não há itens pendentes além disso.
 
 ---
 
@@ -123,14 +123,19 @@ Restam: #19.
 
 ## 6. Dev local (Windows) 🟢
 
-- [ ] **#19 — `asyncpg` falha no host (Python 3.14 + event loop do Windows).** 🟢 · baixo
-  - O alvo (Docker, Python 3.12) funciona. Para dev local fora do Docker, definir
-    `WindowsSelectorEventLoopPolicy` no startup.
+- [x] **#19 — `asyncpg` falha no host (Python 3.14 + event loop do Windows).** 🟢 · baixo
+  - Resolvido: `configurar_event_loop` ([runtime.py](app/core/runtime.py)) define a
+    `WindowsSelectorEventLoopPolicy` só no Windows (no-op em Linux/Docker), chamada
+    no startup da API e do worker. [main.py](app/main.py),
+    [celery_app.py](app/core/celery_app.py).
 
 ---
 
 ## Histórico
 
+- **Dev local Windows (2026-06):** #19 — `configurar_event_loop` seleciona o
+  `SelectorEventLoop` no Windows (asyncpg), no startup da API e do worker; no-op
+  em Linux/Docker. Backlog zerado (só #9 segue parcial). 107 testes verdes.
 - **Cobertura medida (2026-06):** #17 — `pytest-cov` com branch coverage e gate de
   88% (~90% atual) no CI; `pytest` puro permanece sem gate. 105 testes verdes.
 - **Cobertura de integrações (2026-06):** #18 — testes dos clientes reais de IA
