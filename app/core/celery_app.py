@@ -23,3 +23,6 @@ celery_app.conf.update(
     timezone="UTC",
 )
 celery_app.autodiscover_tasks(["app.workers"])
+
+# Registra os sinais (logging estruturado + correlação por tarefa, #15).
+from app.workers import sinais as _sinais  # noqa: E402, F401

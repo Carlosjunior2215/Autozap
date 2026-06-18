@@ -30,6 +30,10 @@ class Configuracoes(BaseSettings):
     ambiente: str = "desenvolvimento"
     debug: bool = False
 
+    # Logging
+    log_nivel: str = "INFO"
+    log_json: bool = True
+
     # Banco de dados (async via asyncpg)
     database_url: str = "postgresql+asyncpg://autozap:autozap@localhost:5432/autozap"
 

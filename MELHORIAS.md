@@ -9,8 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #16, #20, #21 e #9 (parcial).
-Restam: #11, #15, #17, #18, #19.
+**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #15, #16, #20, #21 e #9 (parcial).
+Restam: #11, #17, #18, #19.
 
 ---
 
@@ -93,8 +93,13 @@ Restam: #11, #15, #17, #18, #19.
 - [x] **#14 — Sem `lifespan` para encerrar recursos no shutdown.** 🟢 · baixo
   - Resolvido: `lifespan` encerra o pool. [main.py](app/main.py).
 
-- [ ] **#15 — Logging mínimo, sem correlação; risco de PII (LGPD).** 🟠 · médio
-  - Ação: logging estruturado com request-id; nunca logar telefone/conteúdo cru.
+- [x] **#15 — Logging mínimo, sem correlação; risco de PII (LGPD).** 🟠 · médio
+  - Resolvido: logging estruturado (JSON) com id de correlação ponta a ponta —
+    middleware gera/propaga `X-Request-ID` (contextvar) na API e os sinais do
+    Celery o levam ao worker (header `correlation_id`, fallback no id da tarefa).
+    Helper `mascarar_telefone` e convenção "sem telefone/conteúdo cru".
+    [logging.py](app/core/logging.py), [middleware.py](app/api/middleware.py),
+    [sinais.py](app/workers/sinais.py).
 
 ## 5. Testes / CI / qualidade 🟢
 
@@ -116,6 +121,9 @@ Restam: #11, #15, #17, #18, #19.
 
 ## Histórico
 
+- **Observabilidade (2026-06):** #15 — logging estruturado (JSON) com correlação
+  ponta a ponta (`X-Request-ID` na API → header de tarefa no worker) e
+  mascaramento de telefone (LGPD). 89 testes verdes.
 - **Resposta do atendente (2026-06):** #20 — a ingestão passou a processar
   `statuses` outbound e marcar a conversa como `HUMANO` quando o envio não é do
   bot (distinção por `wa_message_id`), complementando o #2. 72 testes verdes.
