@@ -66,7 +66,7 @@ app/
   schemas/           # Pydantic
   services/          # regras de negócio
   integrations/      # whatsapp.py, ia.py (+ fakes em testes)
-  workers/           # tasks Celery, sinais (logging/correlação)
+  workers/           # tasks Celery, runtime (loop/deps persistentes), sinais
 alembic/             # migrations
 tests/               # pytest (conftest, fakes, test_*)
 ```

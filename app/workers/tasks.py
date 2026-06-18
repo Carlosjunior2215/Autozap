@@ -1,6 +1,5 @@
 """Tarefas assíncronas executadas pelo worker Celery."""
 
-import asyncio
 import logging
 from typing import Any
 
@@ -22,17 +21,14 @@ def ingerir_webhook(payload_bruto: dict[str, Any]) -> None:
     from app.core.config import obter_configuracoes
     from app.core.db import obter_sessionmaker
     from app.services.ingestao import ingerir_e_enfileirar
+    from app.workers.runtime import executar
 
     config = obter_configuracoes()
     atraso_seg = max(0, config.minutos_sem_resposta * 60)
     enfileirar = obter_enfileirador()
-
-    async def _executar() -> list[int]:
-        return await ingerir_e_enfileirar(
-            payload_bruto, obter_sessionmaker(), enfileirar, atraso_seg
-        )
-
-    ids = asyncio.run(_executar())
+    ids = executar(
+        ingerir_e_enfileirar(payload_bruto, obter_sessionmaker(), enfileirar, atraso_seg)
+    )
     logger.info("Webhook ingerido: %d mensagem(ns) enfileirada(s)", len(ids))
 
 
@@ -40,15 +36,11 @@ def ingerir_webhook(payload_bruto: dict[str, Any]) -> None:
 def processar_mensagem(mensagem_id: int) -> None:
     """Processa uma mensagem recebida do cliente (detecção, classificação, resposta).
 
-    A lógica é assíncrona; aqui ela é executada via ``asyncio.run`` por tarefa,
-    conforme decidido para integrar o worker síncrono do Celery ao acesso async.
+    A lógica é assíncrona e roda no loop persistente do processo de worker, que
+    reusa os clientes externos e o engine entre as tarefas (#9).
     """
-    from app.services.processamento import ResultadoProcessamento, processar
-    from app.workers.dependencias import criar_dependencias
+    from app.services.processamento import processar
+    from app.workers.runtime import executar, obter_dependencias
 
-    async def _executar() -> ResultadoProcessamento:
-        async with criar_dependencias() as deps:
-            return await processar(mensagem_id, deps)
-
-    resultado = asyncio.run(_executar())
+    resultado = executar(processar(mensagem_id, obter_dependencias()))
     logger.info("Mensagem %s processada: acao=%s", mensagem_id, resultado.acao)

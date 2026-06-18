@@ -9,8 +9,7 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1–#8, #10–#18, #20 e #21; #9 segue parcial (falta reuso de pool
-por loop persistente do worker). Não há itens pendentes além disso.
+**Concluídos:** #1–#21 (todos). Não há itens pendentes.
 
 ---
 
@@ -62,10 +61,14 @@ por loop persistente do worker). Não há itens pendentes além disso.
 
 ## 3. Performance / otimização 🟢
 
-- [~] **#9 — Clientes recriados a cada mensagem; `httpx` nunca fechado.** 🟠 · médio
-  - Parcial: `criar_dependencias()` fecha `httpx`/`redis`/`anthropic` ao fim de
-    cada tarefa (sem mais vazamento). [dependencias.py](app/workers/dependencias.py).
-  - Falta: loop persistente por processo de worker para reuso real de pool.
+- [x] **#9 — Clientes recriados a cada mensagem; `httpx` nunca fechado.** 🟠 · médio
+  - Resolvido: o worker mantém um event loop e um conjunto de dependências
+    persistentes por processo (`runtime.executar`/`obter_dependencias`), reusando o
+    pool de `httpx`/`redis` e o engine entre as tarefas; o fechamento ocorre no
+    `worker_process_shutdown`. Substitui o `asyncio.run` (loop novo) por mensagem,
+    que também ligava o engine async a loops distintos.
+    [runtime.py](app/workers/runtime.py), [dependencias.py](app/workers/dependencias.py),
+    [tasks.py](app/workers/tasks.py), [sinais.py](app/workers/sinais.py).
 
 - [x] **#10 — Webhook processava de forma síncrona antes de responder 200.** 🟠 · médio
   - Resolvido: o POST valida assinatura + parse e responde 200; ingestão e
@@ -133,6 +136,9 @@ por loop persistente do worker). Não há itens pendentes além disso.
 
 ## Histórico
 
+- **Worker persistente (2026-06):** #9 (completo) — event loop e dependências por
+  processo (reuso de pool httpx/redis + engine), encerrados no shutdown do worker;
+  fim do `asyncio.run` por mensagem. Backlog 100% concluído. 111 testes verdes.
 - **Dev local Windows (2026-06):** #19 — `configurar_event_loop` seleciona o
   `SelectorEventLoop` no Windows (asyncpg), no startup da API e do worker; no-op
   em Linux/Docker. Backlog zerado (só #9 segue parcial). 107 testes verdes.
