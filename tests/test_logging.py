@@ -115,10 +115,12 @@ def test_mascarar_nao_expoe_numero_cru() -> None:
 
 
 def test_correlacao_da_tarefa_usa_header() -> None:
-    class _Req:
-        correlation_id = "do-header"
+    from types import SimpleNamespace
 
-    assert _correlacao_da_tarefa(_Req(), "task-1") == "do-header"
+    from app.core.logging import CABECALHO_CORRELACAO_TAREFA
+
+    req = SimpleNamespace(**{CABECALHO_CORRELACAO_TAREFA: "do-header"})
+    assert _correlacao_da_tarefa(req, "task-1") == "do-header"
 
 
 def test_correlacao_da_tarefa_cai_no_task_id() -> None:
