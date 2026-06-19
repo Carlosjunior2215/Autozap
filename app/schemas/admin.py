@@ -88,3 +88,20 @@ class PromocaoSaida(BaseModel):
     vigencia_inicio: datetime | None
     vigencia_fim: datetime | None
     ativa: bool
+
+
+class MetricaTipo(BaseModel):
+    """Agregado de um tipo de evento de métrica."""
+
+    tipo: str
+    quantidade: int
+    soma: float
+
+
+class MetricasSaida(BaseModel):
+    """Métricas agregadas por tipo dentro de uma janela de tempo."""
+
+    desde: datetime | None
+    ate: datetime
+    total: int
+    por_tipo: list[MetricaTipo]

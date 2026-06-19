@@ -1,9 +1,10 @@
 """Rotas administrativas, protegidas por API key (header ``X-API-Key``)."""
 
 import hmac
+from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,8 @@ from app.models import Conversa, Promocao, Template
 from app.models.enums import EstadoConversa
 from app.schemas.admin import (
     ConversaSaida,
+    MetricasSaida,
+    MetricaTipo,
     PromocaoAtualizacao,
     PromocaoEntrada,
     PromocaoSaida,
@@ -21,6 +24,8 @@ from app.schemas.admin import (
     TemplateSaida,
 )
 from app.services.admin import esquecer_contato
+from app.services.metricas import agregar_metricas
+from app.services.tempo import agora_utc
 
 
 async def verificar_api_key(
@@ -42,6 +47,29 @@ async def listar_conversas(sessao: Sessao, limite: int = 50) -> list[ConversaSai
     """Lista as conversas mais recentes."""
     resultado = await sessao.execute(select(Conversa).order_by(Conversa.id.desc()).limit(limite))
     return [ConversaSaida.model_validate(conversa) for conversa in resultado.scalars().all()]
+
+
+@roteador.get("/metricas")
+async def listar_metricas(
+    sessao: Sessao,
+    desde_horas: Annotated[int | None, Query(ge=1)] = None,
+) -> MetricasSaida:
+    """Métricas agregadas por tipo (handoffs, rate limits, respostas etc.).
+
+    ``desde_horas`` (opcional) restringe à janela recente; sem ele, considera tudo.
+    """
+    agora = agora_utc()
+    desde = agora - timedelta(hours=desde_horas) if desde_horas else None
+    agregados = await agregar_metricas(sessao, desde)
+    return MetricasSaida(
+        desde=desde,
+        ate=agora,
+        total=sum(item.quantidade for item in agregados),
+        por_tipo=[
+            MetricaTipo(tipo=item.tipo, quantidade=item.quantidade, soma=item.soma)
+            for item in agregados
+        ],
+    )
 
 
 @roteador.post("/conversas/{conversa_id}/liberar")

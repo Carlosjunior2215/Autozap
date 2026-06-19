@@ -32,6 +32,7 @@ Copy-Item .env.example .env
 | Tipos | `mypy app tests` |
 | Testes | `pytest` |
 | Testes (1 arquivo) | `pytest tests/test_smoke.py` |
+| Cobertura (gate 88%) | `pytest --cov --cov-report=term-missing` |
 | API local | `uvicorn app.main:app --reload` |
 | Worker (Fase 1+) | `celery -A app.core.celery_app.celery_app worker --loglevel=info` |
 | Migrations aplicar (Fase 1+) | `alembic upgrade head` |
@@ -50,19 +51,22 @@ Copy-Item .env.example .env
   `messages.parse`) e `claude-sonnet-4-6` (respostas). Sem `effort`/thinking em Haiku.
 - Critério para avançar de fase: `ruff`, `mypy` e `pytest` verdes.
 - Commits pequenos por fase; **não fazer push** sem pedido explícito.
+- **Logs**: estruturados (JSON) com id de correlação automático (`X-Request-ID`
+  na API, header da tarefa no worker). Nunca logar telefone/conteúdo cru — use
+  `mascarar_telefone` ([app/core/logging.py](app/core/logging.py)).
 
 ## Estrutura
 
 ```
 app/
   main.py            # app factory + /health
-  core/              # config, db, segurança, celery
-  api/               # webhook, admin, deps
+  core/              # config, db, segurança, celery, logging
+  api/               # webhook, admin, deps, middleware
   models/            # SQLAlchemy
   schemas/           # Pydantic
   services/          # regras de negócio
   integrations/      # whatsapp.py, ia.py (+ fakes em testes)
-  workers/           # tasks Celery
+  workers/           # tasks Celery, runtime (loop/deps persistentes), sinais
 alembic/             # migrations
 tests/               # pytest (conftest, fakes, test_*)
 ```

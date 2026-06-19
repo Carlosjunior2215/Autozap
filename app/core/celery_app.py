@@ -3,6 +3,10 @@
 from celery import Celery
 
 from app.core.config import obter_configuracoes
+from app.core.runtime import configurar_event_loop
+
+# Ajusta o event loop (Windows/dev) antes de qualquer ``asyncio.run`` de tarefa.
+configurar_event_loop()
 
 _config = obter_configuracoes()
 
@@ -23,3 +27,6 @@ celery_app.conf.update(
     timezone="UTC",
 )
 celery_app.autodiscover_tasks(["app.workers"])
+
+# Registra os sinais (logging estruturado + correlação por tarefa, #15).
+from app.workers import sinais as _sinais  # noqa: E402, F401

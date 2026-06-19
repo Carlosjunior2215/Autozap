@@ -1,14 +1,16 @@
 """Ingestão de mensagens do webhook: normalização, deduplicação e persistência."""
 
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import Contato, Conversa, Mensagem
 from app.models.enums import EstadoConversa, OrigemMensagem, StatusMensagem, TipoMensagem
-from app.schemas.webhook import MensagemEntrada, WebhookPayload
+from app.schemas.webhook import MensagemEntrada, StatusEntrada, WebhookPayload
 
 
 def _so_digitos(valor: str | None) -> str:
@@ -61,8 +63,8 @@ async def _obter_ou_criar_contato(sessao: AsyncSession, telefone: str, nome: str
     return contato
 
 
-async def _obter_ou_criar_conversa(sessao: AsyncSession, contato_id: int) -> Conversa:
-    """Retorna a conversa ativa do contato ou cria uma nova."""
+async def _conversa_ativa_do_contato(sessao: AsyncSession, contato_id: int) -> Conversa | None:
+    """Retorna a conversa ativa (não encerrada) mais recente do contato, se houver."""
     resultado = await sessao.execute(
         select(Conversa)
         .where(
@@ -72,12 +74,44 @@ async def _obter_ou_criar_conversa(sessao: AsyncSession, contato_id: int) -> Con
         .order_by(Conversa.id.desc())
         .limit(1)
     )
-    conversa = resultado.scalar_one_or_none()
+    return resultado.scalar_one_or_none()
+
+
+async def _obter_ou_criar_conversa(sessao: AsyncSession, contato_id: int) -> Conversa:
+    """Retorna a conversa ativa do contato ou cria uma nova."""
+    conversa = await _conversa_ativa_do_contato(sessao, contato_id)
     if conversa is None:
         conversa = Conversa(contato_id=contato_id)
         sessao.add(conversa)
         await sessao.flush()
     return conversa
+
+
+async def _marcar_resposta_humana(
+    sessao: AsyncSession, status: StatusEntrada, agora: datetime
+) -> None:
+    """Detecta resposta do atendente (status outbound) e pausa a automação (#20).
+
+    Eventos ``statuses`` (entrega) chegam para *toda* mensagem outbound. Os do
+    próprio bot têm ``id`` (wamid) já persistido em ``mensagens``; os enviados
+    manualmente pelo atendente (pelo app) não — esses indicam resposta humana.
+    Marcar ``ultima_msg_origem=HUMANO`` faz a reavaliação de "não respondida" (#2)
+    deixar de considerar a conversa elegível, evitando auto-resposta sobreposta.
+    """
+    if not status.recipient_id:
+        return
+    # Status de uma mensagem nossa (bot): não é resposta humana.
+    if status.id and await _mensagem_ja_existe(sessao, status.id):
+        return
+    resultado = await sessao.execute(select(Contato).where(Contato.telefone == status.recipient_id))
+    contato = resultado.scalar_one_or_none()
+    if contato is None:
+        return
+    conversa = await _conversa_ativa_do_contato(sessao, contato.id)
+    if conversa is None:
+        return
+    conversa.ultima_msg_em = agora
+    conversa.ultima_msg_origem = OrigemMensagem.HUMANO
 
 
 async def ingerir_payload(sessao: AsyncSession, payload: WebhookPayload) -> list[int]:
@@ -128,5 +162,29 @@ async def ingerir_payload(sessao: AsyncSession, payload: WebhookPayload) -> list
                 if conversa.estado == EstadoConversa.NOVA:
                     conversa.estado = EstadoConversa.EM_ANDAMENTO
                 ids_novos.append(nova.id)
+            # Statuses outbound: detectam resposta do atendente para pausar o bot (#20).
+            for status in valor.statuses:
+                await _marcar_resposta_humana(sessao, status, datetime.now(UTC))
     await sessao.commit()
     return ids_novos
+
+
+async def ingerir_e_enfileirar(
+    payload_bruto: dict[str, Any],
+    sessionmaker: async_sessionmaker[AsyncSession],
+    enfileirar: Callable[[int, int], None],
+    atraso_seg: int,
+) -> list[int]:
+    """Valida o payload bruto, persiste as mensagens novas e as enfileira.
+
+    Orquestração executada de forma durável pela tarefa Celery de ingestão (#21):
+    o payload bruto recebido no webhook é validado aqui, persistido e cada
+    mensagem nova é enfileirada para processamento (com ``atraso_seg`` de
+    reavaliação de "não respondida"). Retorna os ids enfileirados.
+    """
+    payload = WebhookPayload.model_validate(payload_bruto)
+    async with sessionmaker() as sessao:
+        ids = await ingerir_payload(sessao, payload)
+    for mensagem_id in ids:
+        enfileirar(mensagem_id, atraso_seg)
+    return ids

@@ -1,10 +1,14 @@
 """Testes dos endpoints administrativos (API key, CRUD, handoff, esquecimento)."""
 
+from datetime import timedelta
+
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import Contato, Conversa, Mensagem
+from app.models import Contato, Conversa, EventoMetrica, Mensagem
+from app.services.metricas import agregar_metricas
+from app.services.tempo import agora_utc
 from tests._fabricas import criar_mensagem_cliente
 from tests.conftest import ADMIN_API_KEY_TESTE
 
@@ -91,3 +95,56 @@ async def test_apagar_contato_esquecimento(
 async def test_apagar_contato_inexistente_404(cliente: httpx.AsyncClient) -> None:
     resposta = await cliente.delete("/admin/contatos/9999", headers=_CABECALHO)
     assert resposta.status_code == 404
+
+
+# --- Métricas agregadas (#11) --------------------------------------------
+
+
+async def test_metricas_agrega_por_tipo(
+    cliente: httpx.AsyncClient, sessionmaker_teste: async_sessionmaker[AsyncSession]
+) -> None:
+    async with sessionmaker_teste() as sessao:
+        for tipo in ("resposta_enviada", "resposta_enviada", "handoff"):
+            sessao.add(EventoMetrica(tipo=tipo))
+        await sessao.commit()
+
+    resposta = await cliente.get("/admin/metricas", headers=_CABECALHO)
+    assert resposta.status_code == 200
+    dados = resposta.json()
+    assert dados["total"] == 3
+    assert dados["desde"] is None
+    # Ordenado por frequência: o tipo mais comum vem primeiro.
+    assert dados["por_tipo"][0]["tipo"] == "resposta_enviada"
+    por_tipo = {item["tipo"]: item for item in dados["por_tipo"]}
+    assert por_tipo["resposta_enviada"]["quantidade"] == 2
+    assert por_tipo["resposta_enviada"]["soma"] == 2.0
+    assert por_tipo["handoff"]["quantidade"] == 1
+
+
+async def test_metricas_endpoint_filtra_por_janela(
+    cliente: httpx.AsyncClient, sessionmaker_teste: async_sessionmaker[AsyncSession]
+) -> None:
+    agora = agora_utc()
+    async with sessionmaker_teste() as sessao:
+        sessao.add(EventoMetrica(tipo="novo", criado_em=agora))
+        sessao.add(EventoMetrica(tipo="velho", criado_em=agora - timedelta(hours=10)))
+        await sessao.commit()
+
+    resposta = await cliente.get("/admin/metricas", params={"desde_horas": 1}, headers=_CABECALHO)
+    dados = resposta.json()
+    assert dados["total"] == 1
+    assert dados["desde"] is not None
+    assert [item["tipo"] for item in dados["por_tipo"]] == ["novo"]
+
+
+async def test_metricas_desde_horas_invalido_422(cliente: httpx.AsyncClient) -> None:
+    resposta = await cliente.get("/admin/metricas", params={"desde_horas": 0}, headers=_CABECALHO)
+    assert resposta.status_code == 422
+
+
+async def test_agregar_metricas_vazio(
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessionmaker_teste() as sessao:
+        agregados = await agregar_metricas(sessao)
+    assert agregados == []

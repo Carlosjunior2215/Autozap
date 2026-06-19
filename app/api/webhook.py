@@ -1,34 +1,16 @@
 """Rotas do webhook da WhatsApp Cloud API."""
 
 import json
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.deps import Enfileirador, obter_enfileirador
+from app.api.deps import EnfileiradorIngestao, obter_enfileirador_ingestao
 from app.core.config import Configuracoes, obter_configuracoes
-from app.core.db import obter_sessionmaker
 from app.core.seguranca import verificar_assinatura, verificar_token_webhook
-from app.schemas.webhook import WebhookPayload
-from app.services.ingestao import ingerir_payload
 
 roteador = APIRouter(tags=["webhook"])
-
-
-async def _ingerir_e_enfileirar(
-    dados: dict[str, Any],
-    sessionmaker: async_sessionmaker[AsyncSession],
-    enfileirar: Enfileirador,
-    atraso_seg: int,
-) -> None:
-    """Ingestão + enfileiramento, executados após responder 200 ao webhook."""
-    payload = WebhookPayload.model_validate(dados)
-    async with sessionmaker() as sessao:
-        ids = await ingerir_payload(sessao, payload)
-    for mensagem_id in ids:
-        enfileirar(mensagem_id, atraso_seg)
 
 
 @roteador.get("/webhook")
@@ -47,17 +29,16 @@ async def verificar_webhook(
 @roteador.post("/webhook")
 async def receber_webhook(
     request: Request,
-    tarefas: BackgroundTasks,
     config: Annotated[Configuracoes, Depends(obter_configuracoes)],
-    sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(obter_sessionmaker)],
-    enfileirar: Annotated[Enfileirador, Depends(obter_enfileirador)],
+    enfileirar_ingestao: Annotated[EnfileiradorIngestao, Depends(obter_enfileirador_ingestao)],
     x_hub_signature_256: Annotated[str | None, Header()] = None,
 ) -> Response:
-    """Valida a assinatura e responde 200 rápido; ingestão segue em background.
+    """Valida a assinatura e responde 200 rápido; ingestão segue de forma durável.
 
     A Meta reentrega eventos se a resposta demorar/falhar; por isso só fazemos no
     request o indispensável (assinatura + parse) e delegamos a persistência e o
-    enfileiramento para uma tarefa de fundo.
+    enfileiramento a uma tarefa Celery (broker Redis), que sobrevive a quedas do
+    processo — diferente da ``BackgroundTask`` efêmera anterior (#21).
     """
     corpo = await request.body()
     if not verificar_assinatura(corpo, x_hub_signature_256, config.whatsapp_app_secret):
@@ -69,6 +50,5 @@ async def receber_webhook(
     if not isinstance(dados, dict):
         return Response(status_code=400)
 
-    atraso_seg = max(0, config.minutos_sem_resposta * 60)
-    tarefas.add_task(_ingerir_e_enfileirar, dados, sessionmaker, enfileirar, atraso_seg)
+    enfileirar_ingestao(dados)
     return Response(status_code=200)

@@ -22,7 +22,9 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
     "aiosqlite>=0.20",
+    "fakeredis>=2.26",
     "ruff>=0.8",
     "mypy>=1.13",
 ]
@@ -65,3 +67,24 @@ disallow_untyped_decorators = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+# Composição de infra do worker: criam clientes reais (Anthropic/Redis/httpx) e
+# só rodam no processo Celery; a lógica que orquestram é testada via os serviços.
+omit = [
+    "app/core/celery_app.py",
+    "app/workers/tasks.py",
+    "app/workers/dependencias.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 88
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]

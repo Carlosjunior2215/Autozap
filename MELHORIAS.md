@@ -9,8 +9,7 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1, #2, #3, #4, #5, #6, #7, #8, #10, #12, #13, #14, #16 e #9 (parcial).
-Restam: #11, #15, #17, #18, #19, #20, #21.
+**Concluídos:** #1–#21 (todos). Não há itens pendentes.
 
 ---
 
@@ -31,13 +30,14 @@ Restam: #11, #15, #17, #18, #19, #20, #21.
   - Resolvido: a ingestão descarta mensagens cujo `from` é o `display_phone_number`
     do negócio; `statuses` já eram ignorados. [ingestao.py](app/services/ingestao.py).
 
-- [ ] **#20 — Detectar resposta do atendente (statuses outbound) para parar a automação.** 🟠 · médio
-  - Limitação conhecida do #2: se o atendente responde pelo app durante os N
-    minutos, isso chega como evento `statuses` (outbound), hoje ignorado — então a
-    conversa não é marcada como respondida por humano e a auto-resposta agendada
-    ainda pode disparar.
-  - Ação: processar `value.statuses` (ou mensagens outbound) e marcar
-    `ultima_msg_origem=HUMANO` na conversa do `recipient_id`. Complementa o #2.
+- [x] **#20 — Detectar resposta do atendente (statuses outbound) para parar a automação.** 🟠 · médio
+  - Resolvido: a ingestão processa `value.statuses`; quando o `status.id` não
+    corresponde a uma mensagem nossa (o bot grava o `wa_message_id` de cada envio),
+    trata-se de um envio manual do atendente e a conversa do `recipient_id` é
+    marcada com `ultima_msg_origem=HUMANO`, barrando a reavaliação do #2.
+    [ingestao.py](app/services/ingestao.py).
+  - Nota: pausa só a auto-resposta agendada; não coloca a conversa em atendimento
+    humano permanente (se o cliente voltar a escrever, a automação reavalia).
 
 ## 2. Robustez de produção 🟠
 
@@ -61,22 +61,31 @@ Restam: #11, #15, #17, #18, #19, #20, #21.
 
 ## 3. Performance / otimização 🟢
 
-- [~] **#9 — Clientes recriados a cada mensagem; `httpx` nunca fechado.** 🟠 · médio
-  - Parcial: `criar_dependencias()` fecha `httpx`/`redis`/`anthropic` ao fim de
-    cada tarefa (sem mais vazamento). [dependencias.py](app/workers/dependencias.py).
-  - Falta: loop persistente por processo de worker para reuso real de pool.
+- [x] **#9 — Clientes recriados a cada mensagem; `httpx` nunca fechado.** 🟠 · médio
+  - Resolvido: o worker mantém um event loop e um conjunto de dependências
+    persistentes por processo (`runtime.executar`/`obter_dependencias`), reusando o
+    pool de `httpx`/`redis` e o engine entre as tarefas; o fechamento ocorre no
+    `worker_process_shutdown`. Substitui o `asyncio.run` (loop novo) por mensagem,
+    que também ligava o engine async a loops distintos.
+    [runtime.py](app/workers/runtime.py), [dependencias.py](app/workers/dependencias.py),
+    [tasks.py](app/workers/tasks.py), [sinais.py](app/workers/sinais.py).
 
 - [x] **#10 — Webhook processava de forma síncrona antes de responder 200.** 🟠 · médio
   - Resolvido: o POST valida assinatura + parse e responde 200; ingestão e
     enfileiramento vão para uma `BackgroundTask`. [webhook.py](app/api/webhook.py).
 
-- [ ] **#21 — Ingestão em background é efêmera (evolução do #10).** 🟠 · médio
-  - A `BackgroundTask` se perde se o processo cair entre o 200 e a conclusão.
-  - Ação: enfileirar o payload bruto numa tarefa Celery (Redis durável) para a
-    ingestão, mantendo o 200 rápido.
+- [x] **#21 — Ingestão em background é efêmera (evolução do #10).** 🟠 · médio
+  - Resolvido: o webhook valida assinatura/parse e enfileira o payload bruto na
+    tarefa Celery `ingerir_webhook` (broker Redis durável), respondendo 200 rápido;
+    a tarefa persiste e enfileira o processamento. A orquestração
+    `ingerir_e_enfileirar` é reutilizada/testada de forma isolada.
+    [webhook.py](app/api/webhook.py), [tasks.py](app/workers/tasks.py),
+    [deps.py](app/api/deps.py), [ingestao.py](app/services/ingestao.py).
 
-- [ ] **#11 — `eventos_metrica` é gravado mas nunca lido.** 🟢 · baixo
-  - Ação: endpoint admin de métricas agregadas (ou Prometheus).
+- [x] **#11 — `eventos_metrica` é gravado mas nunca lido.** 🟢 · baixo
+  - Resolvido: `GET /admin/metricas` agrega por tipo (quantidade + soma), com
+    filtro opcional `desde_horas`. Serviço `agregar_metricas` (GROUP BY).
+    [metricas.py](app/services/metricas.py), [admin.py](app/api/admin.py).
 
 ## 4. Observabilidade / operação 🟠
 
@@ -89,29 +98,67 @@ Restam: #11, #15, #17, #18, #19, #20, #21.
 - [x] **#14 — Sem `lifespan` para encerrar recursos no shutdown.** 🟢 · baixo
   - Resolvido: `lifespan` encerra o pool. [main.py](app/main.py).
 
-- [ ] **#15 — Logging mínimo, sem correlação; risco de PII (LGPD).** 🟠 · médio
-  - Ação: logging estruturado com request-id; nunca logar telefone/conteúdo cru.
+- [x] **#15 — Logging mínimo, sem correlação; risco de PII (LGPD).** 🟠 · médio
+  - Resolvido: logging estruturado (JSON) com id de correlação ponta a ponta —
+    middleware gera/propaga `X-Request-ID` (contextvar) na API e os sinais do
+    Celery o levam ao worker (header `correlation_id`, fallback no id da tarefa).
+    Helper `mascarar_telefone` e convenção "sem telefone/conteúdo cru".
+    [logging.py](app/core/logging.py), [middleware.py](app/api/middleware.py),
+    [sinais.py](app/workers/sinais.py).
 
 ## 5. Testes / CI / qualidade 🟢
 
 - [x] **#16 — Sem CI.** 🟠 · baixo
   - Resolvido: GitHub Actions (lint, tipos, testes, build Docker). [ci.yml](.github/workflows/ci.yml).
 
-- [ ] **#17 — Sem medição de cobertura.** 🟢 · baixo · `pytest-cov`.
+- [x] **#17 — Sem medição de cobertura.** 🟢 · baixo · `pytest-cov`.
+  - Resolvido: `pytest-cov` configurado em `pyproject.toml` (branch on, gate
+    `fail_under=88`, ~90% atual), omitindo só a composição de infra do worker; o
+    CI roda `pytest --cov`. `pytest` puro segue sem gate (runs isolados).
 
-- [ ] **#18 — Faltam testes:** payload `statuses`, falha da IA (feito p/ processamento;
-  falta para os clientes reais), `RateLimiterRedis` real (com `fakeredis`). 🟢 · baixo-médio.
+- [x] **#18 — Faltam testes:** payload `statuses`, falha da IA (clientes reais) e
+  `RateLimiterRedis` real. 🟢 · baixo-médio.
+  - Resolvido: `statuses` coberto junto ao #20; `test_ia.py` exercita
+    `ClassificadorHaiku`/`GeradorSonnet` (parsing, fallback, contexto e `APIError`
+    → `ErroIA`) com um dublê do SDK; `test_rate_limit.py` testa o
+    `RateLimiterRedis` real com `fakeredis` (limite, TTL, janelas). `fakeredis`
+    entrou nas deps de dev.
 
 ## 6. Dev local (Windows) 🟢
 
-- [ ] **#19 — `asyncpg` falha no host (Python 3.14 + event loop do Windows).** 🟢 · baixo
-  - O alvo (Docker, Python 3.12) funciona. Para dev local fora do Docker, definir
-    `WindowsSelectorEventLoopPolicy` no startup.
+- [x] **#19 — `asyncpg` falha no host (Python 3.14 + event loop do Windows).** 🟢 · baixo
+  - Resolvido: `configurar_event_loop` ([runtime.py](app/core/runtime.py)) define a
+    `WindowsSelectorEventLoopPolicy` só no Windows (no-op em Linux/Docker), chamada
+    no startup da API e do worker. [main.py](app/main.py),
+    [celery_app.py](app/core/celery_app.py).
 
 ---
 
 ## Histórico
 
+- **Worker persistente (2026-06):** #9 (completo) — event loop e dependências por
+  processo (reuso de pool httpx/redis + engine), encerrados no shutdown do worker;
+  fim do `asyncio.run` por mensagem. Backlog 100% concluído. 111 testes verdes.
+- **Dev local Windows (2026-06):** #19 — `configurar_event_loop` seleciona o
+  `SelectorEventLoop` no Windows (asyncpg), no startup da API e do worker; no-op
+  em Linux/Docker. Backlog zerado (só #9 segue parcial). 107 testes verdes.
+- **Cobertura medida (2026-06):** #17 — `pytest-cov` com branch coverage e gate de
+  88% (~90% atual) no CI; `pytest` puro permanece sem gate. 105 testes verdes.
+- **Cobertura de integrações (2026-06):** #18 — testes dos clientes reais de IA
+  (com dublê do SDK) e do `RateLimiterRedis` real (`fakeredis`); `statuses` já
+  cobertos no #20. 105 testes verdes.
+- **Métricas (2026-06):** #11 — `GET /admin/metricas` agrega `eventos_metrica`
+  por tipo (com filtro `desde_horas`), expondo o que já era coletado. 93 testes.
+- **Observabilidade (2026-06):** #15 — logging estruturado (JSON) com correlação
+  ponta a ponta (`X-Request-ID` na API → header de tarefa no worker) e
+  mascaramento de telefone (LGPD). 89 testes verdes.
+- **Resposta do atendente (2026-06):** #20 — a ingestão passou a processar
+  `statuses` outbound e marcar a conversa como `HUMANO` quando o envio não é do
+  bot (distinção por `wa_message_id`), complementando o #2. 72 testes verdes.
+- **Ingestão durável (2026-06):** #21 — webhook passou a só enfileirar o payload
+  bruto numa tarefa Celery (`ingerir_webhook`), eliminando a `BackgroundTask`
+  efêmera do #10; ingestão+enfileiramento extraídos em `ingerir_e_enfileirar`.
+  `ruff`/`mypy`/`pytest` verdes (69 testes).
 - **Iteração de robustez (2026-06):** entregues #1, #4, #6, #7, #8, #9 (parcial),
   #12, #13, #14, #16 em 5 blocos commitados; `ruff`/`mypy`/`pytest` verdes e
   migration `7f9a4828c29c` validada no Postgres real.
