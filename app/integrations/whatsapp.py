@@ -12,6 +12,15 @@ import httpx
 from app.core.config import Configuracoes
 
 
+class ErroEnvio(Exception):
+    """Falha ao enviar uma mensagem pela WhatsApp Cloud API (HTTP/transporte).
+
+    Exceção de domínio: isola o restante do código das exceções do ``httpx``, para
+    que o processamento trate a falha de envio (ex.: escalar para humano) sem
+    acoplar — análogo a :class:`app.integrations.ia.ErroIA`.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class OpcaoInterativa:
     """Opção de um botão ou item de lista interativa."""
@@ -66,8 +75,11 @@ class CloudApiWhatsAppClient:
     async def _enviar(self, payload: dict[str, Any]) -> str:
         corpo = {"messaging_product": "whatsapp", **payload}
         cabecalhos = {"Authorization": f"Bearer {self._config.whatsapp_access_token}"}
-        resposta = await self._http.post(self._url, json=corpo, headers=cabecalhos)
-        resposta.raise_for_status()
+        try:
+            resposta = await self._http.post(self._url, json=corpo, headers=cabecalhos)
+            resposta.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ErroEnvio("falha ao enviar mensagem ao WhatsApp") from exc
         dados: Any = resposta.json()
         mensagens = dados.get("messages") if isinstance(dados, dict) else None
         if mensagens:

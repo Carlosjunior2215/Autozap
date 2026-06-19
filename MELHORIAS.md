@@ -9,7 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1–#21 (todos). Não há itens pendentes.
+**Concluídos:** #1–#23 (todos). #22 e #23 foram follow-ups levantados — e
+validados — na validação da stack real (seção 7).
 
 ---
 
@@ -132,10 +133,34 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
     no startup da API e do worker. [main.py](app/main.py),
     [celery_app.py](app/core/celery_app.py).
 
+## 7. Follow-ups da validação da stack real 🟠
+
+- [x] **#22 — Erros de envio ao WhatsApp estouravam a tarefa.** 🟠 · baixo
+  - Observado na stack: com `WHATSAPP_ACCESS_TOKEN` vazio, o envio levantava
+    `httpx.HTTPError` não tratado e a tarefa falhava (sem escalar).
+  - Resolvido: `CloudApiWhatsAppClient._enviar` converte `httpx.HTTPError` em
+    `ErroEnvio`; `processar` captura e escala para humano (`erro_envio`), análogo
+    ao tratamento da IA (#6). A resposta do bot permanece `PENDENTE` (idempotência
+    do #5). [whatsapp.py](app/integrations/whatsapp.py),
+    [processamento.py](app/services/processamento.py).
+
+- [x] **#23 — Correlação não se propaga entre tarefas.** 🟠 · baixo
+  - Era: o header `correlation_id` colidia com o campo reservado do Celery (que o
+    sobrescrevia com o id da tarefa), então a correlação caía no fallback.
+  - Resolvido: header próprio `autozap_correlacao` (constante
+    `CABECALHO_CORRELACAO_TAREFA`). Validado na stack real: o mesmo id flui
+    API→ingestão→processamento. [logging.py](app/core/logging.py),
+    [deps.py](app/api/deps.py), [sinais.py](app/workers/sinais.py).
+
 ---
 
 ## Histórico
 
+- **Follow-ups da stack real (2026-06):** #22 (erro de envio ao WhatsApp escala
+  para humano) e #23 (correlação com header próprio `autozap_correlacao`, sem
+  colidir com o campo reservado do Celery). Ambos validados na stack real:
+  `acao=handoff` em vez de crash, e o mesmo id de correlação fluindo
+  API→ingestão→processamento. 116 testes verdes.
 - **Worker persistente (2026-06):** #9 (completo) — event loop e dependências por
   processo (reuso de pool httpx/redis + engine), encerrados no shutdown do worker;
   fim do `asyncio.run` por mensagem. Backlog 100% concluído. 111 testes verdes.

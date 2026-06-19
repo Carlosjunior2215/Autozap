@@ -15,12 +15,19 @@ from celery.signals import (
 )
 
 from app.core.config import obter_configuracoes
-from app.core.logging import configurar_logging, definir_correlacao, gerar_id
+from app.core.logging import (
+    CABECALHO_CORRELACAO_TAREFA,
+    configurar_logging,
+    definir_correlacao,
+    gerar_id,
+)
 
 
 def _correlacao_da_tarefa(request: Any, task_id: str | None) -> str:
     """Usa o id de correlação propagado no header da tarefa; senão, o id da tarefa."""
-    correlacao = getattr(request, "correlation_id", None) if request is not None else None
+    correlacao = (
+        getattr(request, CABECALHO_CORRELACAO_TAREFA, None) if request is not None else None
+    )
     return correlacao or task_id or gerar_id()
 
 

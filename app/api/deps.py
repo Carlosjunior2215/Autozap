@@ -2,12 +2,12 @@
 
 from typing import Any, Protocol
 
-from app.core.logging import gerar_id, obter_correlacao
+from app.core.logging import CABECALHO_CORRELACAO_TAREFA, gerar_id, obter_correlacao
 
 
 def _headers_correlacao() -> dict[str, str]:
     """Cabeçalhos da tarefa Celery com o id de correlação atual (propagação #15)."""
-    return {"correlation_id": obter_correlacao() or gerar_id()}
+    return {CABECALHO_CORRELACAO_TAREFA: obter_correlacao() or gerar_id()}
 
 
 class Enfileirador(Protocol):

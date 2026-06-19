@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Configuracoes
 from app.integrations.ia import ClassificadorIA, ErroIA, GeradorRespostaIA
-from app.integrations.whatsapp import WhatsAppClient
+from app.integrations.whatsapp import ErroEnvio, WhatsAppClient
 from app.models import Contato, Conversa, EventoMetrica, Intencao, Mensagem
 from app.models.enums import (
     CategoriaIntencao,
@@ -130,7 +130,26 @@ async def _enviar_resposta(
 async def processar(mensagem_id: int, deps: Dependencias) -> ResultadoProcessamento:
     """Processa uma mensagem recebida do cliente, aplicando todas as regras."""
     async with deps.sessionmaker() as sessao:
-        return await _processar(mensagem_id, deps, sessao)
+        try:
+            return await _processar(mensagem_id, deps, sessao)
+        except ErroEnvio:
+            # Envio ao WhatsApp falhou (ex.: indisponibilidade/HTTP): não deixa a
+            # tarefa estourar — escala para humano (a resposta do bot já está
+            # gravada como PENDENTE pela idempotência do #5).
+            return await _escalar_por_falha_envio(sessao, mensagem_id)
+
+
+async def _escalar_por_falha_envio(
+    sessao: AsyncSession, mensagem_id: int
+) -> ResultadoProcessamento:
+    """Escala a conversa para humano após uma falha de envio ao WhatsApp."""
+    await sessao.rollback()
+    mensagem = await sessao.get(Mensagem, mensagem_id)
+    conversa = await sessao.get(Conversa, mensagem.conversa_id) if mensagem else None
+    if conversa is not None:
+        _escalar_humano(sessao, conversa, "erro_envio")
+        await sessao.commit()
+    return ResultadoProcessamento(acao="handoff", motivo="erro_envio")
 
 
 async def _processar(

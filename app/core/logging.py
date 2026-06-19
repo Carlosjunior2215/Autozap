@@ -17,6 +17,11 @@ from uuid import uuid4
 
 _correlacao: ContextVar[str | None] = ContextVar("correlacao", default=None)
 
+# Header (não reservado) para propagar a correlação entre tarefas Celery. O nome
+# "correlation_id" colide com o campo reservado do protocolo do Celery (que o
+# sobrescreve com o id da tarefa), então usamos um nome próprio.
+CABECALHO_CORRELACAO_TAREFA = "autozap_correlacao"
+
 # Atributos padrão de ``logging.LogRecord`` — usados para separar os campos
 # "extra" passados pelo chamador dos campos internos do registro.
 _ATRIBUTOS_PADRAO = frozenset(logging.makeLogRecord({}).__dict__) | {
