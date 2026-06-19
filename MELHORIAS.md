@@ -9,7 +9,8 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
 > Convenção do projeto: avançar só com `ruff`, `mypy` e `pytest` verdes; commits
 > pequenos por bloco; sem `push` sem pedido explícito.
 
-**Concluídos:** #1–#21 (todos). Não há itens pendentes.
+**Concluídos:** #1–#22. Resta: #23 (correlação entre tarefas). #22 e #23 são
+follow-ups levantados na validação da stack real (seção 7).
 
 ---
 
@@ -131,6 +132,22 @@ Status: `[ ]` pendente · `[~]` parcial · `[x]` concluído.
     `WindowsSelectorEventLoopPolicy` só no Windows (no-op em Linux/Docker), chamada
     no startup da API e do worker. [main.py](app/main.py),
     [celery_app.py](app/core/celery_app.py).
+
+## 7. Follow-ups da validação da stack real 🟠
+
+- [x] **#22 — Erros de envio ao WhatsApp estouravam a tarefa.** 🟠 · baixo
+  - Observado na stack: com `WHATSAPP_ACCESS_TOKEN` vazio, o envio levantava
+    `httpx.HTTPError` não tratado e a tarefa falhava (sem escalar).
+  - Resolvido: `CloudApiWhatsAppClient._enviar` converte `httpx.HTTPError` em
+    `ErroEnvio`; `processar` captura e escala para humano (`erro_envio`), análogo
+    ao tratamento da IA (#6). A resposta do bot permanece `PENDENTE` (idempotência
+    do #5). [whatsapp.py](app/integrations/whatsapp.py),
+    [processamento.py](app/services/processamento.py).
+
+- [ ] **#23 — Correlação não se propaga entre tarefas.** 🟠 · baixo
+  - O id de correlação enfileirado no header `correlation_id` cai no fallback do
+    task id no worker (provável colisão com o campo reservado do Celery). Cada
+    tarefa é rastreável, mas o encadeamento API→ingestão→processamento se perde.
 
 ---
 

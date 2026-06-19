@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.integrations.ia import ErroIA, ResultadoIntencao
+from app.integrations.whatsapp import ErroEnvio
 from app.models import Contato, Conversa, Intencao, Mensagem, Template
-from app.models.enums import OrigemMensagem, StatusMensagem
+from app.models.enums import EstadoConversa, OrigemMensagem, StatusMensagem
 from app.services.processamento import Dependencias, processar
 from app.services.tempo import agora_utc
 from tests._fabricas import criar_mensagem_cliente
@@ -134,6 +135,34 @@ async def test_erro_ia_na_geracao_escala_para_humano(
     async with sessionmaker_teste() as sessao:
         conversa = (await sessao.execute(select(Conversa))).scalar_one()
     assert conversa.em_atendimento_humano is True
+
+
+async def test_erro_envio_escala_para_humano(
+    dependencias: Dependencias,
+    sessionmaker_teste: async_sessionmaker[AsyncSession],
+    whatsapp_fake: FakeWhatsAppClient,
+) -> None:
+    # O envio ao WhatsApp falha: a tarefa não estoura, escala para humano.
+    whatsapp_fake.erro = ErroEnvio("indisponivel")
+    mensagem_id = await criar_mensagem_cliente(sessionmaker_teste, texto="quero agendar")
+    resultado = await processar(mensagem_id, dependencias)
+
+    assert resultado.acao == "handoff"
+    assert resultado.motivo == "erro_envio"
+    assert whatsapp_fake.envios == []  # falhou antes de registrar o envio
+
+    async with sessionmaker_teste() as sessao:
+        conversa = (await sessao.execute(select(Conversa))).scalar_one()
+        mensagens = list(
+            (await sessao.execute(select(Mensagem).order_by(Mensagem.id))).scalars().all()
+        )
+    assert conversa.em_atendimento_humano is True
+    assert conversa.estado == EstadoConversa.AGUARDANDO_HUMANO
+    # A resposta do bot ficou gravada como PENDENTE (idempotência do #5).
+    bot_msg = next(m for m in mensagens if m.origem == OrigemMensagem.BOT)
+    assert bot_msg.status == StatusMensagem.PENDENTE
+    cliente_msg = next(m for m in mensagens if m.origem == OrigemMensagem.CLIENTE)
+    assert cliente_msg.respondida is True
 
 
 async def test_anti_loop_ignora_mensagem_do_bot(
